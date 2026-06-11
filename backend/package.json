@@ -1,0 +1,41 @@
+{
+    "name": "ai-agents-hackathon-2026",
+    "version": "1.0.0",
+    "description": "Welcome to the **AI Agents Hackathon 2026**! The theme for this sprint is **Life in Lebanon**.",
+    "main": "index.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/cfares-prog/ai-agents-hackathon-2026.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "type": "commonjs",
+    "bugs": {
+        "url": "https://github.com/cfares-prog/ai-agents-hackathon-2026/issues"
+    },
+    "homepage": "https://github.com/cfares-prog/ai-agents-hackathon-2026#readme",
+    "dependencies": {
+        "@whiskeysockets/baileys": "^7.0.0-rc13",
+        "compression": "^1.8.1",
+        "cors": "^2.8.6",
+        "dotenv": "^17.4.2",
+        "express": "^5.2.1",
+        "express-mongo-sanitize": "^2.2.0",
+        "express-rate-limit": "^8.5.2",
+        "express-validator": "^7.3.2",
+        "helmet": "^8.2.0",
+        "mongoose": "^9.7.0",
+        "openai": "^6.42.0",
+        "pino": "^8.21.0",
+        "qrcode-terminal": "^0.12.0",
+        "winston": "^3.19.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.14"
+    }
+}
