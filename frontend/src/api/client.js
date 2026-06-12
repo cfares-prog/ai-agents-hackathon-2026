@@ -1,4 +1,6 @@
-const BASE = import.meta.env.VITE_API_BASE_URL || '';
+const BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? 'https://ai-agents-hackathon-2026-1.onrender.com' : '');
 
 export const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || 'x1J2AazEckPLmLIF';
 
