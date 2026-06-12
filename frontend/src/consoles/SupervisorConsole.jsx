@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import styles from './Consoles.module.css'
-import { submitReport, getCampReports } from '../api/client.js'
-import { StatusBadge, UrgencyMeter, ProgressSteps } from './StatusBits.jsx'
-
-const NEED_OPTIONS = ['water', 'food', 'medical', 'shelter', 'general_relief']
+import { getCampReports } from '../api/client.js'
+import { StatusBadge, UrgencyMeter } from './StatusBits.jsx'
 
 export default function SupervisorConsole({ setup }) {
   const camps = setup?.camps || []
   const [campId, setCampId] = useState('')
-  const [description, setDescription] = useState('')
-  const [needs, setNeeds] = useState(['water'])
-  const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState(null)
   const [requests, setRequests] = useState([])
-  const [loadingLog, setLoadingLog] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     if (!campId && camps.length > 0) setCampId(camps[0].id)
@@ -21,11 +16,11 @@ export default function SupervisorConsole({ setup }) {
 
   const refreshLog = useCallback(() => {
     if (!campId) return
-    setLoadingLog(true)
+    setLoading(true)
     getCampReports(campId)
-      .then((d) => setRequests(d.requests || []))
-      .catch(() => setRequests([]))
-      .finally(() => setLoadingLog(false))
+      .then((d) => { setRequests(d.requests || []); setError(null) })
+      .catch((e) => { setError(e.message); setRequests([]) })
+      .finally(() => setLoading(false))
   }, [campId])
 
   useEffect(() => {
@@ -34,125 +29,79 @@ export default function SupervisorConsole({ setup }) {
     return () => clearInterval(t)
   }, [refreshLog])
 
-  const toggleNeed = (n) =>
-    setNeeds((prev) => prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n])
-
-  const onSubmit = async (e) => {
-    e.preventDefault()
-    setFeedback(null)
-    setSubmitting(true)
-    try {
-      const res = await submitReport(campId, description, needs)
-      setFeedback({
-        ok: true,
-        text: `Request ${res.requestId} triaged with urgency ${res.urgencyScore}/10 — status: ${res.status}.`,
-      })
-      setDescription('')
-      refreshLog()
-    } catch (err) {
-      setFeedback({ ok: false, text: err.message })
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
   const selectedCamp = camps.find((c) => c.id === campId)
 
   return (
-    <div className={styles.split}>
-      <div>
-        <h3 className={styles.colTitle}>Submit Emergency Request</h3>
-        <p className={styles.colHint}>
-          Webform intake — the same pipeline used when WhatsApp is unavailable.
-        </p>
-        <form onSubmit={onSubmit}>
-          <div className={styles.field}>
-            <label className={styles.label}>Camp</label>
-            <select className={styles.select} value={campId} onChange={(e) => setCampId(e.target.value)}>
-              {camps.map((c) => (
-                <option key={c.id} value={c.id}>{c.location}</option>
-              ))}
-            </select>
-            {selectedCamp && (
-              <small style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>
-                Supervisor: {selectedCamp.supervisorName} · {selectedCamp.supervisorPhone}
-              </small>
+    <div>
+      <h3 className={styles.colTitle}>My Emergency Requests</h3>
+      <p className={styles.colHint}>
+        Reports submitted by this camp supervisor via WhatsApp appear here automatically.
+        Use WhatsApp on your registered number — no web submission needed.
+      </p>
+
+      <div className={styles.field} style={{ maxWidth: 420, marginBottom: 20 }}>
+        <label className={styles.label}>Camp supervisor</label>
+        <select className={styles.select} value={campId} onChange={(e) => setCampId(e.target.value)}>
+          {camps.map((c) => (
+            <option key={c.id} value={c.id}>{c.location} — {c.supervisorName}</option>
+          ))}
+        </select>
+        {selectedCamp && (
+          <small style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+            WhatsApp: +{selectedCamp.supervisorWhatsappNumber}
+          </small>
+        )}
+      </div>
+
+      {error && <div className={styles.error} style={{ marginBottom: 16 }}>{error}</div>}
+
+      <div className={styles.tableWrap}>
+        <table className={styles.dataTable}>
+          <thead>
+            <tr>
+              <th>Ticket</th>
+              <th>Summary</th>
+              <th>Urgency</th>
+              <th>Status</th>
+              <th>Needs</th>
+              <th>Source</th>
+              <th>Assigned NGO</th>
+              <th>Submitted</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && requests.length === 0 ? (
+              <tr>
+                <td colSpan={8} className={styles.tableEmpty}>Loading requests…</td>
+              </tr>
+            ) : requests.length === 0 ? (
+              <tr>
+                <td colSpan={8} className={styles.tableEmpty}>
+                  No requests yet for {selectedCamp?.location || 'this camp'}.
+                  Send an emergency report from WhatsApp using the registered supervisor number.
+                </td>
+              </tr>
+            ) : (
+              requests.map((r) => (
+                <tr key={r.requestId}>
+                  <td><span className={styles.reqId}>{r.requestId}</span></td>
+                  <td className={styles.tableSummary}>{r.summary || r.issueDescription}</td>
+                  <td><UrgencyMeter score={r.urgencyScore} /></td>
+                  <td><StatusBadge status={r.status} /></td>
+                  <td>{(r.needsList || []).join(', ') || '—'}</td>
+                  <td>{r.source}</td>
+                  <td>{r.assignedNgo || '—'}</td>
+                  <td>{new Date(r.createdAt).toLocaleString()}</td>
+                </tr>
+              ))
             )}
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label}>Issue description</label>
-            <textarea
-              className={styles.textarea}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              minLength={10}
-              maxLength={2000}
-              required
-              placeholder="Describe the emergency (min 10 characters)… e.g. Generator failed and the medical fridge is down, insulin spoiling fast."
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label}>Needs</label>
-            <div className={styles.checks}>
-              {NEED_OPTIONS.map((n) => (
-                <label key={n} className={needs.includes(n) ? styles.checkOn : styles.check}>
-                  <input
-                    type="checkbox"
-                    checked={needs.includes(n)}
-                    onChange={() => toggleNeed(n)}
-                  />
-                  {n.replace('_', ' ')}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <button className={styles.submitBtn} disabled={submitting || !campId || needs.length === 0}>
-            {submitting ? 'Triaging…' : 'Submit & Triage'}
-          </button>
-        </form>
-
-        {feedback && (
-          <div className={feedback.ok ? styles.success : styles.error}>{feedback.text}</div>
-        )}
+          </tbody>
+        </table>
       </div>
 
-      <div>
-        <h3 className={styles.colTitle}>
-          Request History {loadingLog && <small style={{ color: 'var(--text-dim)' }}>· refreshing…</small>}
-        </h3>
-        <p className={styles.colHint}>
-          Last 30 days for {selectedCamp?.location || 'selected camp'} — live progress, auto-refreshes every 6s.
-        </p>
-
-        {requests.length === 0 ? (
-          <div className={styles.empty}>
-            No requests yet. Submit one on the left, or fire a WhatsApp simulation —
-            it will appear here instantly.
-          </div>
-        ) : (
-          <div className={styles.cardList}>
-            {requests.map((r) => (
-              <article key={r.requestId} className={styles.reqCard}>
-                <div className={styles.reqTop}>
-                  <StatusBadge status={r.status} />
-                  <UrgencyMeter score={r.urgencyScore} />
-                </div>
-                <p className={styles.reqSummary}>{r.summary || r.issueDescription}</p>
-                <div className={styles.reqMeta}>
-                  <span className={styles.reqId}>{r.requestId}</span>
-                  <span>· {r.source}</span>
-                  {r.assignedNgo && <span>· → {r.assignedNgo}</span>}
-                  <span>· {new Date(r.createdAt).toLocaleString()}</span>
-                </div>
-                <ProgressSteps status={r.status} />
-              </article>
-            ))}
-          </div>
-        )}
-      </div>
+      {loading && requests.length > 0 && (
+        <p className={styles.refreshNote}>Refreshing…</p>
+      )}
     </div>
   )
 }

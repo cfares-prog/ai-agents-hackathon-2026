@@ -3,19 +3,19 @@ import styles from './Landing.module.css'
 
 const problems = [
   {
-    icon: '⚡',
-    title: 'Electricity collapse',
-    text: 'State power is available only a few hours a day. Camps rely on patchy generators, making digital coordination platforms unreliable.',
+    icon: '💥',
+    title: 'War & mass displacement',
+    text: 'Israel’s war on Lebanon forced hundreds of thousands to flee the south. Families abandoned homes under bombardment and crowded into Beirut, the north, and informal settlements with little notice.',
   },
   {
-    icon: '🚚',
-    title: 'Broken logistics',
-    text: 'Fuel shortages and damaged roads mean aid convoys must be routed precisely — wasted trips cost lives, not just money.',
+    icon: '📵',
+    title: 'Communication breakdown',
+    text: 'Damaged towers, power cuts, and overloaded networks make it hard for displaced supervisors to reach NGOs. Messages get lost in chaotic group chats when every minute counts.',
   },
   {
-    icon: '🗂️',
-    title: 'Fragmented coordination',
-    text: 'Dozens of NGOs, no shared queue. Urgent requests get lost in WhatsApp groups while duplicated aid goes to the wrong sites.',
+    icon: '🏕️',
+    title: 'Overwhelmed refugee camps',
+    text: 'Sudden influxes strain water, medicine, shelter, and food supplies. Camps lack a shared queue — duplicate aid arrives at one site while another waits in silence.',
   },
 ]
 
@@ -47,7 +47,7 @@ const capabilities = [
 ]
 
 const flow = [
-  { step: '01', title: 'Report', text: '"We need insulin and water urgently" — sent via WhatsApp or webform.' },
+  { step: '01', title: 'Report', text: '"We need insulin and water urgently" — sent via WhatsApp from a registered supervisor number.' },
   { step: '02', title: 'AI Triage', text: 'The message is analyzed, needs are extracted, urgency scored 1–10.' },
   { step: '03', title: 'Route', text: 'The allocator matches needs against NGO specialties and assigns the task.' },
   { step: '04', title: 'Acknowledge', text: 'The NGO confirms it has taken ownership of the request.' },
@@ -66,12 +66,13 @@ export default function Landing() {
         </h1>
         <p className={styles.subtitle}>
           CedarRelief connects displacement camp supervisors to specialized NGOs
-          through a WhatsApp-first reporting pipeline. AI scores the urgency,
-          a smart allocator routes the task, and everyone tracks it live.
+          through a WhatsApp-first reporting pipeline — built for families uprooted
+          by war, struggling to coordinate relief from Beirut, the north, and
+          overcrowded camps across Lebanon.
         </p>
         <div className={styles.heroActions}>
           <Link to="/console" className={styles.primaryBtn}>Open the Control Center →</Link>
-          <a href="#how-it-works" className={styles.ghostBtn}>How it works</a>
+          <a href="#why-lebanon" className={styles.ghostBtn}>Why Lebanon needs this</a>
         </div>
         <div className={styles.heroStats}>
           <div><strong>1–10</strong><span>AI urgency scale</span></div>
@@ -80,11 +81,14 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className={styles.section}>
+      <section className={styles.section} id="why-lebanon">
         <h2 className={styles.sectionTitle}>Why Lebanon needs this</h2>
         <p className={styles.sectionLead}>
-          Years of compounding crises left critical infrastructure gaps.
-          Aid exists — coordination is the bottleneck.
+          Israel’s war on Lebanon displaced entire communities from the south toward
+          Beirut and the north. People arrived in unfamiliar cities and hastily built
+          camps with broken phones, patchy signal, and no single line to the NGOs
+          that could help. CedarRelief closes that gap — one WhatsApp message, one
+          shared dispatch queue, one auditable path from crisis to delivery.
         </p>
         <div className={styles.grid3}>
           {problems.map((p) => (
@@ -119,7 +123,7 @@ export default function Landing() {
       <section className={styles.section} id="how-it-works">
         <h2 className={styles.sectionTitle}>The dispatch flow</h2>
         <p className={styles.sectionLead}>
-          From a supervisor's message to delivered aid — five auditable steps.
+          From a supervisor's WhatsApp message to delivered aid — five auditable steps.
         </p>
         <div className={styles.flow}>
           {flow.map((f, i) => (
@@ -138,8 +142,8 @@ export default function Landing() {
       <section className={styles.finalCta}>
         <h2>Try the full pipeline, end to end.</h2>
         <p>
-          Simulate WhatsApp emergencies, watch the AI triage them, and dispatch
-          NGOs from the interactive Control Center.
+          Link the WhatsApp bot, send a real emergency report from a supervisor phone,
+          watch the AI triage it, and dispatch NGOs from the interactive Control Center.
         </p>
         <Link to="/console" className={styles.primaryBtn}>Launch Control Center →</Link>
       </section>

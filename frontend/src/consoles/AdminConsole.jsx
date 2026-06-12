@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import QRCode from 'react-qr-code'
 import styles from './Consoles.module.css'
-import { ADMIN_KEY, getHealth, getNgoRequests, getWhatsappStatus } from '../api/client.js'
+import { ADMIN_KEY, fetchWhatsappPairingQr, getHealth, getNgoRequests, getWhatsappStatus } from '../api/client.js'
 import { StatusBadge, UrgencyMeter } from './StatusBits.jsx'
 
 const ALL_STATUSES = ['pending', 'routed', 'acknowledged', 'fulfilled']
@@ -10,16 +9,33 @@ export default function AdminConsole({ setup }) {
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
   const [wa, setWa] = useState(null)
+  const [pairingQrSrc, setPairingQrSrc] = useState(null)
   const [feed, setFeed] = useState([])
   const [feedLoading, setFeedLoading] = useState(false)
 
-  const refreshHealth = useCallback(() => {
-    getHealth()
-      .then((h) => { setHealth(h); setHealthError(null) })
-      .catch((e) => { setHealth(null); setHealthError(e.message) })
-    getWhatsappStatus()
-      .then(setWa)
-      .catch(() => setWa(null))
+  const refreshHealth = useCallback(async () => {
+    try {
+      const h = await getHealth()
+      setHealth(h)
+      setHealthError(null)
+    } catch (e) {
+      setHealth(null)
+      setHealthError(e.message)
+    }
+
+    try {
+      const status = await getWhatsappStatus()
+      setWa(status)
+      if (!status.connected) {
+        const qrSrc = await fetchWhatsappPairingQr()
+        setPairingQrSrc(qrSrc)
+      } else {
+        setPairingQrSrc(null)
+      }
+    } catch {
+      setWa(null)
+      setPairingQrSrc(null)
+    }
   }, [])
 
   const refreshFeed = useCallback(() => {
@@ -91,10 +107,10 @@ export default function AdminConsole({ setup }) {
 
       {health?.whatsapp !== 'connected' && (
         <div className={styles.qrCard}>
-          {wa?.qr ? (
+          {pairingQrSrc ? (
             <>
               <div className={styles.qrBox}>
-                <QRCode value={wa.qr} size={196} bgColor="#ffffff" fgColor="#04130a" />
+                <img src={pairingQrSrc} alt="WhatsApp pairing QR code" width={196} height={196} />
               </div>
               <div>
                 <h3>Link a WhatsApp account</h3>
@@ -105,7 +121,7 @@ export default function AdminConsole({ setup }) {
                 <ol>
                   <li>Open WhatsApp on the phone you want to use as the bot</li>
                   <li>Go to <strong>Settings → Linked Devices → Link a Device</strong></li>
-                  <li>Scan this code (it rotates every ~60s, refreshed here automatically)</li>
+                  <li>Scan this code from <code>/qr</code> (refreshes automatically)</li>
                 </ol>
               </div>
             </>

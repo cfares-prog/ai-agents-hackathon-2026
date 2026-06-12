@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'react-qr-code'
 import styles from './Consoles.module.css'
-import { getWhatsappStatus } from '../api/client.js'
+import { fetchWhatsappPairingQr, getWhatsappStatus } from '../api/client.js'
 
 function formatPhone(number) {
   const digits = String(number || '').replace(/\D/g, '')
@@ -17,15 +17,31 @@ function botContactUrl(number) {
 export default function WhatsAppConnect({ setup }) {
   const camps = setup?.camps || []
   const [status, setStatus] = useState(null)
+  const [pairingQrSrc, setPairingQrSrc] = useState(null)
   const [error, setError] = useState(null)
   const [manualBotNumber, setManualBotNumber] = useState('')
 
   useEffect(() => {
     let cancelled = false
-    const load = () =>
-      getWhatsappStatus()
-        .then((s) => { if (!cancelled) { setStatus(s); setError(null) } })
-        .catch((e) => { if (!cancelled) setError(e.message) })
+
+    const load = async () => {
+      try {
+        const s = await getWhatsappStatus()
+        if (cancelled) return
+        setStatus(s)
+        setError(null)
+
+        if (!s.connected) {
+          const qrSrc = await fetchWhatsappPairingQr()
+          if (!cancelled) setPairingQrSrc(qrSrc)
+        } else if (!cancelled) {
+          setPairingQrSrc(null)
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message)
+      }
+    }
+
     load()
     const t = setInterval(load, 4000)
     return () => { cancelled = true; clearInterval(t) }
@@ -104,10 +120,10 @@ export default function WhatsAppConnect({ setup }) {
             </div>
           )}
         </>
-      ) : status?.qr ? (
+      ) : pairingQrSrc ? (
         <div className={styles.qrCard}>
           <div className={styles.qrBox}>
-            <QRCode value={status.qr} size={240} bgColor="#ffffff" fgColor="#04130a" />
+            <img src={pairingQrSrc} alt="WhatsApp pairing QR code" width={240} height={240} />
           </div>
           <div>
             <h3>Scan to link the dispatch bot</h3>
@@ -117,7 +133,7 @@ export default function WhatsAppConnect({ setup }) {
             <ol>
               <li>Open WhatsApp on that phone</li>
               <li>Go to <strong>Settings → Linked Devices → Link a Device</strong></li>
-              <li>Scan this code — it rotates every ~60s and refreshes here automatically</li>
+              <li>Scan this code from <code>/qr</code> — it rotates every ~60s and refreshes here automatically</li>
             </ol>
           </div>
         </div>
@@ -125,7 +141,7 @@ export default function WhatsAppConnect({ setup }) {
         <div className={styles.empty}>
           {status?.loggedOut
             ? 'The previous WhatsApp session was logged out. Delete backend/logs/whatsapp_auth_session and restart the backend to generate a new pairing QR.'
-            : 'Waiting for the WhatsApp daemon to generate a pairing QR…'}
+            : 'Waiting for the WhatsApp daemon to generate a pairing QR from /qr…'}
         </div>
       )}
 
