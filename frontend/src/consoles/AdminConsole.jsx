@@ -6,6 +6,7 @@ import { StatusBadge, UrgencyMeter } from './StatusBits.jsx'
 const ALL_STATUSES = ['pending', 'routed', 'acknowledged', 'fulfilled']
 
 export default function AdminConsole({ setup, active = true }) {
+  const adminKey = setup?.adminApiKey || ADMIN_KEY
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
   const [healthLoading, setHealthLoading] = useState(false)
@@ -38,7 +39,7 @@ export default function AdminConsole({ setup, active = true }) {
     setFeedLoading(true)
     Promise.all(
       ALL_STATUSES.map((s) =>
-        getNgoRequests(ADMIN_KEY, s)
+        getNgoRequests(adminKey, s)
           .then((d) => (d.requests || []).map((r) => ({ ...r, status: s })))
           .catch(() => []),
       ),
@@ -49,7 +50,7 @@ export default function AdminConsole({ setup, active = true }) {
         setFeed(merged)
       })
       .finally(() => setFeedLoading(false))
-  }, [])
+  }, [adminKey])
 
   const refreshAll = useCallback(() => {
     refreshHealth()
@@ -118,7 +119,7 @@ export default function AdminConsole({ setup, active = true }) {
               ? whatsappConnected
                 ? `live · +${wa.phoneNumber}`
                 : metaConfigured
-                  ? 'missing bot number'
+                  ? 'missing Ai Agent number'
                   : 'not configured'
               : 'unknown'}
           </div>
@@ -136,9 +137,9 @@ export default function AdminConsole({ setup, active = true }) {
       {!whatsappConnected && (
         <div className={styles.qrCard}>
           <div>
-            <h3>WhatsApp bot setup</h3>
+            <h3>WhatsApp Ai Agent setup</h3>
             <p>
-              The bot runs on Meta Cloud API — no device pairing QR. Add{' '}
+              The Ai Agent runs on Meta Cloud API — no device pairing QR. Add{' '}
               <code>META_PHONE_ID</code>, <code>META_TOKEN</code>, and{' '}
               <code>META_WHATSAPP_NUMBER</code> to backend <code>.env</code>, then use the{' '}
               <strong>WhatsApp Link</strong> tab for the single supervisor contact QR.
@@ -146,7 +147,7 @@ export default function AdminConsole({ setup, active = true }) {
             {wa?.authorizedSupervisors?.length > 0 && (
               <p className={styles.colHint}>
                 {wa.authorizedSupervisors.length} supervisor numbers are registered and will be
-                accepted when the bot is live.
+                accepted when the Ai Agent is live.
               </p>
             )}
           </div>

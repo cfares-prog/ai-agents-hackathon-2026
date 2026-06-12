@@ -13,6 +13,7 @@ router.get('/test/setup-info', async (req, res, next) => {
     ]);
 
     return res.status(200).json({
+      adminApiKey: process.env.ADMIN_API_KEY || process.env.Fadel_Camp_Admin || null,
       camps: camps.map((camp) => ({
         id: camp.campId,
         name: camp.name,

@@ -57,7 +57,7 @@ export default function WhatsAppConnect({ setup, active = true }) {
         <div>
           <h3 className={styles.colTitle} style={{ marginBottom: 4 }}>WhatsApp Gateway</h3>
           <p className={styles.colHint} style={{ margin: 0 }}>
-            One dispatch bot number. Supervisors scan the QR or message the bot directly —
+            One dispatch Ai Agent number. Supervisors scan the QR or message the bot directly —
             only registered numbers in the database are accepted.
           </p>
         </div>
@@ -73,13 +73,21 @@ export default function WhatsAppConnect({ setup, active = true }) {
       ) : !status?.connected ? (
         <div className={styles.qrCard}>
           <div>
-            <h3>Bot not configured yet</h3>
-            <p>
-              Set <code>META_PHONE_ID</code> and <code>META_TOKEN</code> in the backend{' '}
-              <code>.env</code>, then <strong>restart the backend</strong> so it picks up the
-              values. <code>META_WHATSAPP_NUMBER</code> is optional — the bot number is fetched
-              from Meta automatically when credentials are valid.
-            </p>
+            <h3>{status?.configured ? 'Backend needs a restart' : 'Bot not configured yet'}</h3>
+            {status?.configured ? (
+              <p>
+                Your <code>.env</code> has Meta credentials, but the <strong>running server</strong>{' '}
+                has not loaded them yet (or is missing <code>META_WHATSAPP_NUMBER</code>).
+                Stop and run <code>npm start</code> again in the <code>backend</code> folder, then
+                refresh this tab.
+              </p>
+            ) : (
+              <p>
+                Set <code>META_PHONE_ID</code>, <code>META_TOKEN</code>, and{' '}
+                <code>META_WHATSAPP_NUMBER</code> in backend <code>.env</code>, then restart the
+                backend.
+              </p>
+            )}
             {status?.configured && !status?.connected && (
               <p className={styles.error}>
                 {status.phoneLookupError || 'Restart the backend if you just updated .env.'}
@@ -127,7 +135,7 @@ export default function WhatsAppConnect({ setup, active = true }) {
               </div>
             )}
             <p className={styles.colHint} style={{ marginTop: 12 }}>
-              Opens WhatsApp with a pre-filled emergency message to the bot.
+              Opens WhatsApp with a pre-filled emergency message to the Ai Agent.
             </p>
           </div>
 
@@ -137,7 +145,7 @@ export default function WhatsAppConnect({ setup, active = true }) {
               Supervisors can also save this number and message it directly in WhatsApp.
             </p>
             <div className={styles.success}>
-              Bot number: <strong>{formatPhone(botNumber)}</strong>
+              Ai Agent number: <strong>{formatPhone(botNumber)}</strong>
             </div>
             {botContact && (
               <a

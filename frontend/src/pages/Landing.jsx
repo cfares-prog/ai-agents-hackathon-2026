@@ -23,7 +23,7 @@ const capabilities = [
   {
     icon: '💬',
     tag: 'Zero-install intake',
-    title: 'WhatsApp Bot Integration',
+    title: 'WhatsApp Ai Agent Integration',
     text: 'Camp supervisors report emergencies from any phone using the app they already have. A Baileys-powered daemon listens 24/7 — no new apps, no training.',
   },
   {
