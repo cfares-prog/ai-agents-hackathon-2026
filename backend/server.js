@@ -12,6 +12,7 @@ const qrCodeWeb = require('qrcode');
 const reportRoutes = require('./src/routes/reportRoutes');
 const ngoRoutes = require('./src/routes/ngoRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
+const testRoutes = require('./src/routes/testRoutes');
 
 // Middleware imports
 const { globalRateLimiter } = require('./src/middleware/rateLimiter');
@@ -51,6 +52,7 @@ app.use('/api/', globalRateLimiter);
 app.use('/api', reportRoutes);
 app.use('/api', ngoRoutes);
 app.use('/api', whatsappRoutes);
+app.use('/api', testRoutes);
 
 //System Health Check Endpoint 
 app.get('/health', async (req, res) => {

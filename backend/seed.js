@@ -1,40 +1,63 @@
 require('dotenv').config();
-const mongoose = require('mongoose');
 const connectDB = require('./src/config/database');
-const Camp = require('./src/models/Camp'); 
+const Camp = require('./src/models/Camp');
+const NGO = require('./src/models/NGO');
 
-const seedCamp = async () => {
+const seedDemoData = async () => {
   try {
-    // 1. Establish the connection flight
     await connectDB();
 
-    // 2. Clear out any older corrupted test iterations (Optional)
-    await Camp.deleteMany({ supervisorName: "Test Supervisor" });
+    await Camp.deleteMany({
+      $or: [
+        { campId: 'camp_beirut_central' },
+        { supervisorWhatsappNumber: '96181977239' },
+      ],
+    });
+    await NGO.deleteMany({ ngoName: { $in: ['Relief Without Borders', 'Lebanon Medical Corps'] } });
 
-    // 3. Define the fresh document matrix
     const mockCamp = new Camp({
-      name: "Beirut Central Relief Hub",
-      supervisorName: "Test Supervisor",
-      // ⚠️ CRITICAL: Must be country code + number with NO spaces, NO "+", and NO leading "00"
-      // Example for Lebanon: "96170123456" or US: "14155552671"
-      supervisorWhatsappNumber: "96181977239", 
-      deletedAt: null
+      campId: 'camp_beirut_central',
+      name: 'Beirut Central Relief Hub',
+      location: 'Beirut Central Relief Hub',
+      supervisorName: 'Test Supervisor',
+      supervisorWhatsappNumber: '96181977239',
+      deletedAt: null,
     });
 
-    // 4. Commit to Atlas
+    const ngos = [
+      new NGO({
+        ngoName: 'Relief Without Borders',
+        contactEmail: 'dispatch@rwb.demo',
+        contactPhone: '96170000001',
+        apiKey: 'ngo_rwb_demo_key',
+        resourceSpecialties: ['water', 'food', 'general_relief', 'general'],
+        isActive: true,
+      }),
+      new NGO({
+        ngoName: 'Lebanon Medical Corps',
+        contactEmail: 'ops@lmc.demo',
+        contactPhone: '96170000002',
+        apiKey: 'ngo_lmc_demo_key',
+        resourceSpecialties: ['medical', 'shelter'],
+        isActive: true,
+      }),
+    ];
+
     await mockCamp.save();
-    
+    await NGO.insertMany(ngos);
+
     console.log('\n===============================================');
-    console.log('🚀 Target Mock Camp Seeded Successfully!');
+    console.log('Demo camp and NGOs seeded successfully.');
     console.log('===============================================');
-    console.log(mockCamp);
-    
-    // 5. Hard exit clean flight
+    console.log('Camp API key (supervisor):', mockCamp.campId);
+    console.log('NGO keys:', ngos.map((ngo) => `${ngo.ngoName} → ${ngo.apiKey}`).join(', '));
+    console.log('Admin key:', process.env.ADMIN_API_KEY || process.env.Fadel_Camp_Admin || '(set ADMIN_API_KEY)');
+
     process.exit(0);
   } catch (err) {
-    console.error('❌ Database seeding execution failure:', err);
+    console.error('Database seeding execution failure:', err);
     process.exit(1);
   }
 };
 
-seedCamp();
+seedDemoData();

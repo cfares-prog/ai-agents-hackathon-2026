@@ -22,14 +22,16 @@ exports.getPendingNgoRequests = async (req, res, next) => {
       .sort({ urgencyScore: -1, createdAt: -1 })
       .skip(skipIndex)
       .limit(limit)
-      .populate({ path: 'campId', select: 'location supervisorName supervisorPhone' })
+      .populate({ path: 'campId', select: 'name location supervisorName supervisorPhone supervisorWhatsappNumber' })
       .lean();
 
     const outputPayload = records.map(entry => ({
       requestId: entry.requestId,
       urgencyScore: entry.urgencyScore,
       summary: entry.summary,
-      campLocation: entry.campId ? entry.campId.location : "Unspecified Regional Location",
+      campLocation: entry.campId
+        ? (entry.campId.location || entry.campId.name)
+        : "Unspecified Regional Location",
       needsList: entry.needsList
     }));
 

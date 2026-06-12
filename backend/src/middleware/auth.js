@@ -9,7 +9,8 @@ const authenticateApiKey = async (req, res, next) => {
 
   try {
     //Check administrative keys
-    if (apiKey === process.env.ADMIN_API_KEY) {
+    const adminKey = process.env.ADMIN_API_KEY || process.env.Fadel_Camp_Admin;
+    if (adminKey && apiKey === adminKey) {
       req.isAdmin = true;
       return next();
     }
