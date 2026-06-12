@@ -33,13 +33,8 @@ export const getHealth = () => api('/health');
 export const getSetupInfo = () => api('/api/test/setup-info');
 export const getWhatsappStatus = () => api('/api/whatsapp/status');
 
-/** Parses the PNG data-URL from GET /qr HTML response. */
-export async function fetchWhatsappPairingQr() {
-  const res = await fetch(`${BASE}/qr`);
-  const html = await res.text();
-  const match = html.match(/src="(data:image\/png;base64,[^"]+)"/);
-  return match ? match[1] : null;
-}
+export const getSupervisorDashboard = (campId) =>
+  api(`/api/camps/${campId}/supervisor-dashboard`);
 
 export const getCampReports = (campId) =>
   api(`/api/reports/${campId}`, { apiKey: campId });

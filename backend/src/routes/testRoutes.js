@@ -15,10 +15,14 @@ router.get('/test/setup-info', async (req, res, next) => {
     return res.status(200).json({
       camps: camps.map((camp) => ({
         id: camp.campId,
-        location: camp.location || camp.name,
+        name: camp.name,
+        location: camp.name,
+        region: camp.region,
         supervisorName: camp.supervisorName,
         supervisorWhatsappNumber: camp.supervisorWhatsappNumber,
         supervisorPhone: camp.supervisorWhatsappNumber,
+        whatsappEnabled: Boolean(camp.supervisorWhatsappNumber),
+        capacity: camp.capacity,
       })),
       ngos: ngos.map((ngo) => ({
         ngoId: ngo.ngoId,
@@ -43,14 +47,23 @@ router.post('/test/whatsapp-simulate', async (req, res, next) => {
     }
 
     const normalizedNumber = String(fromNumber).replace(/\D/g, '');
-    const result = await whatsappAgent.processInboundMessage(normalizedNumber, messageText);
+    const linkedCamp = await Camp.findOne({
+      supervisorWhatsappNumber: normalizedNumber,
+      deletedAt: null,
+    });
 
-    if (!result.accepted) {
+    if (!linkedCamp) {
       return res.status(404).json({
         success: false,
-        error: `Number ${normalizedNumber} is not registered as a camp supervisor.`,
+        error: `Number +${normalizedNumber} is not a registered WhatsApp supervisor.`,
       });
     }
+
+    const result = await whatsappAgent.processInboundMessage(
+      normalizedNumber,
+      messageText,
+      linkedCamp,
+    );
 
     return res.status(200).json({ success: true, ...result });
   } catch (error) {

@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import styles from './Consoles.module.css'
-import { ADMIN_KEY, fetchWhatsappPairingQr, getHealth, getNgoRequests, getWhatsappStatus } from '../api/client.js'
+import { ADMIN_KEY, getHealth, getNgoRequests, getWhatsappStatus } from '../api/client.js'
 import { StatusBadge, UrgencyMeter } from './StatusBits.jsx'
 
 const ALL_STATUSES = ['pending', 'routed', 'acknowledged', 'fulfilled']
 
-export default function AdminConsole({ setup }) {
+export default function AdminConsole({ setup, active = true }) {
   const [health, setHealth] = useState(null)
   const [healthError, setHealthError] = useState(null)
+  const [healthLoading, setHealthLoading] = useState(false)
   const [wa, setWa] = useState(null)
-  const [pairingQrSrc, setPairingQrSrc] = useState(null)
   const [feed, setFeed] = useState([])
   const [feedLoading, setFeedLoading] = useState(false)
 
   const refreshHealth = useCallback(async () => {
+    setHealthLoading(true)
     try {
       const h = await getHealth()
       setHealth(h)
@@ -26,15 +27,10 @@ export default function AdminConsole({ setup }) {
     try {
       const status = await getWhatsappStatus()
       setWa(status)
-      if (!status.connected) {
-        const qrSrc = await fetchWhatsappPairingQr()
-        setPairingQrSrc(qrSrc)
-      } else {
-        setPairingQrSrc(null)
-      }
     } catch {
       setWa(null)
-      setPairingQrSrc(null)
+    } finally {
+      setHealthLoading(false)
     }
   }, [])
 
@@ -55,30 +51,49 @@ export default function AdminConsole({ setup }) {
       .finally(() => setFeedLoading(false))
   }, [])
 
-  useEffect(() => {
+  const refreshAll = useCallback(() => {
     refreshHealth()
     refreshFeed()
-    const t1 = setInterval(refreshHealth, 5000)
-    const t2 = setInterval(refreshFeed, 7000)
-    return () => { clearInterval(t1); clearInterval(t2) }
   }, [refreshHealth, refreshFeed])
+
+  useEffect(() => {
+    if (!active) return
+    refreshAll()
+  }, [active, refreshAll])
 
   const counts = ALL_STATUSES.reduce(
     (acc, s) => ({ ...acc, [s]: feed.filter((r) => r.status === s).length }),
     {},
   )
 
+  const metaConfigured = health?.metaCloudApi === 'configured'
+  const whatsappConnected = wa?.connected === true
+
   return (
     <div>
-      <h3 className={styles.colTitle}>System Health</h3>
-      <p className={styles.colHint}>Polled every 5 seconds from <code>/health</code>.</p>
+      <div className={styles.tableToolbar}>
+        <div>
+          <h3 className={styles.colTitle} style={{ marginBottom: 4 }}>System Health</h3>
+          <p className={styles.colHint} style={{ margin: 0 }}>
+            Loads when you open this tab — no background polling.
+          </p>
+        </div>
+        <button
+          type="button"
+          className={styles.smallBtn}
+          onClick={refreshAll}
+          disabled={healthLoading || feedLoading}
+        >
+          {healthLoading || feedLoading ? 'Loading…' : '↻ Refresh all'}
+        </button>
+      </div>
 
       <div className={styles.healthRow}>
         <div className={styles.healthCard}>
           <h4>API Server</h4>
           <div className={styles.healthValue}>
             <span className={health ? styles.dotOk : styles.dotBad} />
-            {health ? 'online' : 'offline'}
+            {health ? 'online' : healthLoading ? 'checking…' : 'offline'}
           </div>
         </div>
         <div className={styles.healthCard}>
@@ -89,10 +104,23 @@ export default function AdminConsole({ setup }) {
           </div>
         </div>
         <div className={styles.healthCard}>
-          <h4>WhatsApp Daemon</h4>
+          <h4>Meta WhatsApp API</h4>
           <div className={styles.healthValue}>
-            <span className={health?.whatsapp === 'connected' ? styles.dotOk : styles.dotBad} />
-            {health?.whatsapp || 'unknown'}
+            <span className={metaConfigured ? styles.dotOk : styles.dotBad} />
+            {health ? (metaConfigured ? 'configured' : 'missing credentials') : 'unknown'}
+          </div>
+        </div>
+        <div className={styles.healthCard}>
+          <h4>Dispatch bot</h4>
+          <div className={styles.healthValue}>
+            <span className={whatsappConnected ? styles.dotOk : styles.dotBad} />
+            {wa
+              ? whatsappConnected
+                ? `live · +${wa.phoneNumber}`
+                : metaConfigured
+                  ? 'missing bot number'
+                  : 'not configured'
+              : 'unknown'}
           </div>
         </div>
         <div className={styles.healthCard}>
@@ -105,33 +133,23 @@ export default function AdminConsole({ setup }) {
 
       {healthError && <div className={styles.error} style={{ marginBottom: 20 }}>{healthError}</div>}
 
-      {health?.whatsapp !== 'connected' && (
+      {!whatsappConnected && (
         <div className={styles.qrCard}>
-          {pairingQrSrc ? (
-            <>
-              <div className={styles.qrBox}>
-                <img src={pairingQrSrc} alt="WhatsApp pairing QR code" width={196} height={196} />
-              </div>
-              <div>
-                <h3>Link a WhatsApp account</h3>
-                <p>
-                  This number becomes the dispatch bot — camp supervisors text it directly
-                  from their own WhatsApp.
-                </p>
-                <ol>
-                  <li>Open WhatsApp on the phone you want to use as the bot</li>
-                  <li>Go to <strong>Settings → Linked Devices → Link a Device</strong></li>
-                  <li>Scan this code from <code>/qr</code> (refreshes automatically)</li>
-                </ol>
-              </div>
-            </>
-          ) : (
-            <p style={{ color: 'var(--text-dim)' }}>
-              {wa?.loggedOut
-                ? 'WhatsApp session was logged out. Delete backend/logs/whatsapp_auth_session and restart the server to generate a new pairing QR.'
-                : 'Waiting for the WhatsApp daemon to generate a pairing QR…'}
+          <div>
+            <h3>WhatsApp bot setup</h3>
+            <p>
+              The bot runs on Meta Cloud API — no device pairing QR. Add{' '}
+              <code>META_PHONE_ID</code>, <code>META_TOKEN</code>, and{' '}
+              <code>META_WHATSAPP_NUMBER</code> to backend <code>.env</code>, then use the{' '}
+              <strong>WhatsApp Link</strong> tab for the single supervisor contact QR.
             </p>
-          )}
+            {wa?.authorizedSupervisors?.length > 0 && (
+              <p className={styles.colHint}>
+                {wa.authorizedSupervisors.length} supervisor numbers are registered and will be
+                accepted when the bot is live.
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -141,9 +159,12 @@ export default function AdminConsole({ setup }) {
           {(setup?.camps || []).map((c) => (
             <div key={c.id} className={styles.entityRow}>
               <div>
-                {c.location}
+                {c.name || c.location}
                 <br />
-                <span>{c.supervisorName} · +{c.supervisorWhatsappNumber}</span>
+                <span>
+                  {c.region}
+                  {c.whatsappEnabled ? ` · +${c.supervisorWhatsappNumber}` : ' · no WhatsApp supervisor'}
+                </span>
               </div>
               <span className={styles.reqId}>{c.id}</span>
             </div>
@@ -165,15 +186,27 @@ export default function AdminConsole({ setup }) {
         </div>
       </div>
 
-      <h3 className={styles.colTitle}>
-        Live Request Feed {feedLoading && <small style={{ color: 'var(--text-dim)' }}>· refreshing…</small>}
-      </h3>
+      <div className={styles.tableToolbar} style={{ marginTop: 24 }}>
+        <h3 className={styles.colTitle} style={{ margin: 0 }}>
+          Live Request Feed {feedLoading && <small style={{ color: 'var(--text-dim)' }}>· loading…</small>}
+        </h3>
+        <button
+          type="button"
+          className={styles.smallBtn}
+          onClick={refreshFeed}
+          disabled={feedLoading}
+        >
+          ↻ Refresh feed
+        </button>
+      </div>
       <p className={styles.colHint}>
         All requests across every status, sorted by urgency —{' '}
         {ALL_STATUSES.map((s) => `${counts[s]} ${s}`).join(' · ')}
       </p>
 
-      {feed.length === 0 ? (
+      {feedLoading && feed.length === 0 ? (
+        <div className={styles.empty}>Loading request feed…</div>
+      ) : feed.length === 0 ? (
         <div className={styles.empty}>
           No requests in the system yet. Generate some from the other consoles.
         </div>

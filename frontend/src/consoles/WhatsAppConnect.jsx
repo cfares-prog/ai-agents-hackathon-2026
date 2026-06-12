@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import QRCode from 'react-qr-code'
 import styles from './Consoles.module.css'
-import { fetchWhatsappPairingQr, getWhatsappStatus } from '../api/client.js'
+import { getWhatsappStatus } from '../api/client.js'
 
 function formatPhone(number) {
   const digits = String(number || '').replace(/\D/g, '')
@@ -14,163 +14,146 @@ function botContactUrl(number) {
   return `https://wa.me/${digits}?text=${encodeURIComponent('Emergency report from camp supervisor')}`
 }
 
-export default function WhatsAppConnect({ setup }) {
+export default function WhatsAppConnect({ setup, active = true }) {
   const camps = setup?.camps || []
   const [status, setStatus] = useState(null)
-  const [pairingQrSrc, setPairingQrSrc] = useState(null)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [manualBotNumber, setManualBotNumber] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const s = await getWhatsappStatus()
-        if (cancelled) return
-        setStatus(s)
-        setError(null)
-
-        if (!s.connected) {
-          const qrSrc = await fetchWhatsappPairingQr()
-          if (!cancelled) setPairingQrSrc(qrSrc)
-        } else if (!cancelled) {
-          setPairingQrSrc(null)
-        }
-      } catch (e) {
-        if (!cancelled) setError(e.message)
-      }
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      const s = await getWhatsappStatus()
+      setStatus(s)
+      setError(null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
     }
-
-    load()
-    const t = setInterval(load, 4000)
-    return () => { cancelled = true; clearInterval(t) }
   }, [])
 
   useEffect(() => {
-    if (status?.phoneNumber && !manualBotNumber) {
-      setManualBotNumber(status.phoneNumber)
-    }
-  }, [status?.phoneNumber, manualBotNumber])
+    if (!active) return
+    refresh()
+  }, [active, refresh])
 
-  const botNumber = status?.phoneNumber || manualBotNumber.replace(/\D/g, '')
+  const botNumber = status?.phoneNumber || ''
   const botContact = botContactUrl(botNumber)
+  const authorizedCamps = (status?.authorizedSupervisors?.length
+    ? status.authorizedSupervisors
+    : camps.filter((c) => c.whatsappEnabled)
+  ).map((camp) => ({
+    id: camp.campId || camp.id,
+    name: camp.name,
+    region: camp.region || camp.location,
+    supervisorName: camp.supervisorName,
+    supervisorWhatsappNumber: camp.supervisorWhatsappNumber,
+  }))
 
   return (
     <div>
-      <h3 className={styles.colTitle}>WhatsApp Gateway</h3>
-      <p className={styles.colHint}>
-        Link a WhatsApp account to act as the dispatch bot. Camp supervisors then text
-        that number directly from their own phones — no extra app required.
-      </p>
+      <div className={styles.tableToolbar}>
+        <div>
+          <h3 className={styles.colTitle} style={{ marginBottom: 4 }}>WhatsApp Gateway</h3>
+          <p className={styles.colHint} style={{ margin: 0 }}>
+            One dispatch bot number. Supervisors scan the QR or message the bot directly —
+            only registered numbers in the database are accepted.
+          </p>
+        </div>
+        <button type="button" className={styles.smallBtn} onClick={refresh} disabled={loading}>
+          {loading ? 'Loading…' : '↻ Refresh status'}
+        </button>
+      </div>
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {status?.connected ? (
-        <>
-          <div className={styles.qrCard}>
-            <div>
-              <h3>
-                <span className={styles.dotOk} style={{ display: 'inline-block', marginRight: 8 }} />
-                WhatsApp linked — bot is live
-              </h3>
-              <p>
-                The dispatch bot is connected and listening. Any registered supervisor who
-                texts the linked number gets an instant AI-triaged response with a ticket
-                reference, and the request appears across all consoles.
-              </p>
-            </div>
-          </div>
-
-          {botContact && (
-            <div className={styles.identitySection}>
-              <div className={styles.identityPrimary}>
-                <h4>Scan to message the dispatch bot</h4>
-                <p className={styles.colHint} style={{ marginBottom: 12 }}>
-                  Supervisors can scan this QR to open WhatsApp and start chatting with the bot.
-                </p>
-                <div className={styles.qrBox} style={{ display: 'inline-block' }}>
-                  <QRCode value={botContact} size={200} bgColor="#ffffff" fgColor="#04130a" />
-                </div>
-                <p className={styles.colHint} style={{ marginTop: 12 }}>
-                  Opens WhatsApp with a pre-filled emergency message.
-                </p>
-              </div>
-
-              <div className={styles.identitySecondary}>
-                <h4>Or use the number manually</h4>
-                <p className={styles.colHint} style={{ marginBottom: 10 }}>
-                  Save or dial this number in WhatsApp if you cannot scan the QR code.
-                </p>
-                <div className={styles.manualNumberRow}>
-                  <input
-                    className={styles.input}
-                    value={manualBotNumber}
-                    onChange={(e) => setManualBotNumber(e.target.value)}
-                    placeholder="Bot WhatsApp number"
-                    inputMode="tel"
-                  />
-                </div>
-                {botNumber && (
-                  <div className={styles.success} style={{ marginTop: 12 }}>
-                    Bot number: <strong>{formatPhone(botNumber)}</strong>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      ) : pairingQrSrc ? (
+      {loading && !status ? (
+        <div className={styles.empty}>Loading WhatsApp status…</div>
+      ) : !status?.connected ? (
         <div className={styles.qrCard}>
-          <div className={styles.qrBox}>
-            <img src={pairingQrSrc} alt="WhatsApp pairing QR code" width={240} height={240} />
-          </div>
           <div>
-            <h3>Scan to link the dispatch bot</h3>
+            <h3>Bot not configured yet</h3>
             <p>
-              Use the phone whose WhatsApp number will receive emergency reports.
+              Set <code>META_PHONE_ID</code>, <code>META_TOKEN</code>, and{' '}
+              <code>META_WHATSAPP_NUMBER</code> in the backend <code>.env</code>, then restart
+              the server. Meta Cloud API handles the bot — no device pairing QR is needed.
             </p>
-            <ol>
-              <li>Open WhatsApp on that phone</li>
-              <li>Go to <strong>Settings → Linked Devices → Link a Device</strong></li>
-              <li>Scan this code from <code>/qr</code> — it rotates every ~60s and refreshes here automatically</li>
-            </ol>
+            {status?.configured && !botNumber && (
+              <p className={styles.colHint}>
+                Meta credentials are present but the bot phone number could not be resolved.
+                Add <code>META_WHATSAPP_NUMBER</code> (digits only, e.g. 961XXXXXXXX).
+              </p>
+            )}
           </div>
         </div>
       ) : (
-        <div className={styles.empty}>
-          {status?.loggedOut
-            ? 'The previous WhatsApp session was logged out. Delete backend/logs/whatsapp_auth_session and restart the backend to generate a new pairing QR.'
-            : 'Waiting for the WhatsApp daemon to generate a pairing QR from /qr…'}
+        <div className={styles.identitySection}>
+          <div className={styles.identityPrimary}>
+            <h3>
+              <span className={styles.dotOk} style={{ display: 'inline-block', marginRight: 8 }} />
+              Dispatch bot is live
+            </h3>
+            <p className={styles.colHint} style={{ marginBottom: 12 }}>
+              Scan this QR to open WhatsApp and chat with the AI agent. Only supervisors
+              whose numbers appear below can send reports.
+            </p>
+            {botContact && (
+              <div className={styles.qrBox} style={{ display: 'inline-block' }}>
+                <QRCode value={botContact} size={220} bgColor="#ffffff" fgColor="#04130a" />
+              </div>
+            )}
+            <p className={styles.colHint} style={{ marginTop: 12 }}>
+              Opens WhatsApp with a pre-filled emergency message to the bot.
+            </p>
+          </div>
+
+          <div className={styles.identitySecondary}>
+            <h4>Bot WhatsApp number</h4>
+            <p className={styles.colHint} style={{ marginBottom: 10 }}>
+              Supervisors can also save this number and message it directly in WhatsApp.
+            </p>
+            <div className={styles.success}>
+              Bot number: <strong>{formatPhone(botNumber)}</strong>
+            </div>
+            {botContact && (
+              <a
+                className={styles.smallBtn}
+                href={botContact}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: 'inline-block', marginTop: 12 }}
+              >
+                Open in WhatsApp
+              </a>
+            )}
+          </div>
         </div>
       )}
 
       <div className={styles.listCard} style={{ marginTop: 22 }}>
-        <h3>📞 Numbers authorized to text the bot</h3>
+        <h3>Numbers authorized to chat with the bot</h3>
         <p className={styles.colHint} style={{ marginBottom: 10 }}>
-          Only registered camp supervisors are accepted — messages from other numbers are ignored.
+          Messages from any other number are rejected. Each supervisor is linked to their camp
+          in the database.
         </p>
-        <div className={styles.campQrGrid}>
-          {camps.map((c) => (
-            <div key={c.id} className={styles.campQrCardStatic}>
-              <div className={styles.campQrBox}>
-                <QRCode
-                  value={c.supervisorWhatsappNumber}
-                  size={72}
-                  bgColor="#ffffff"
-                  fgColor="#04130a"
-                />
+        {authorizedCamps.length === 0 ? (
+          <div className={styles.empty}>No supervisor WhatsApp numbers registered yet.</div>
+        ) : (
+          <div className={styles.campQrGrid}>
+            {authorizedCamps.map((camp) => (
+              <div key={camp.id} className={styles.campQrCardStatic}>
+                <div>
+                  <strong>{camp.supervisorName}</strong>
+                  <br />
+                  <span>{camp.name}</span>
+                  <br />
+                  <span className={styles.reqId}>{formatPhone(camp.supervisorWhatsappNumber)}</span>
+                </div>
               </div>
-              <div>
-                <strong>{c.supervisorName}</strong>
-                <br />
-                <span>{c.location}</span>
-                <br />
-                <span className={styles.reqId}>{formatPhone(c.supervisorWhatsappNumber)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
