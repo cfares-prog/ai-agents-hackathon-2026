@@ -1,0 +1,18 @@
+./README.md:13:The dev server proxies `/api`, `/health`, and `/qr` to the backend at `http://127.0.0.1:5000`.
+./README.md:26:Open the app at the URL Vite prints (usually http://localhost:5173).
+./src/pages/Console.jsx:3:import { getSetupInfo } from '../api/client.js'
+./src/api/client.js:33:export const getSetupInfo = () => api('/api/test/setup-info');
+./src/api/client.js:34:export const getWhatsappStatus = () => api('/api/whatsapp/status');
+./src/api/client.js:37:  api(`/api/camps/${campId}/supervisor-dashboard`);
+./src/api/client.js:40:  api(`/api/reports/${campId}`, { apiKey: campId });
+./src/api/client.js:43:  api(`/api/ngo/requests?status=${status}&minUrgency=${minUrgency}&limit=50`, { apiKey });
+./src/api/client.js:46:  api(`/api/ngo/requests/${requestId}/acknowledge`, { method: 'PATCH', apiKey });
+./src/api/client.js:49:  api(`/api/ngo/requests/${requestId}/fulfill`, { method: 'PATCH', apiKey });
+./src/consoles/AdminConsole.jsx:3:import { ADMIN_KEY, getHealth, getNgoRequests, getWhatsappStatus } from '../api/client.js'
+./src/consoles/SupervisorConsole.jsx:3:import { getSupervisorDashboard } from '../api/client.js'
+./src/consoles/WhatsAppConnect.jsx:4:import { getWhatsappStatus } from '../api/client.js'
+./src/consoles/WhatsAppConnect.jsx:115:                <code>https://YOUR-NGROK-URL/api/whatsapp/webhook</code> (verify token ={' '}
+./src/consoles/NgoConsole.jsx:3:import { getNgoRequests, acknowledgeRequest, fulfillRequest } from '../api/client.js'
+./vite.config.js:4:// Proxy targets 127.0.0.1 explicitly: another local app may occupy [::1]:5000,
+./vite.config.js:11:      '/api': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+./vite.config.js:12:      '/health': { target: 'http://127.0.0.1:5000', changeOrigin: true },
