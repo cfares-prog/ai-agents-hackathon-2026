@@ -81,9 +81,8 @@ export default function WhatsAppConnect({ setup, active = true }) {
               from Meta automatically when credentials are valid.
             </p>
             {status?.configured && !status?.connected && (
-              <p className={styles.colHint}>
-                Credentials are loaded but the bot number could not be resolved.
-                {status.phoneLookupError ? ` ${status.phoneLookupError}` : ' Restart the backend if you just updated .env.'}
+              <p className={styles.error}>
+                {status.phoneLookupError || 'Restart the backend if you just updated .env.'}
               </p>
             )}
             {!status?.configured && (

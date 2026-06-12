@@ -46,7 +46,24 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(mongoSanitize());
+app.use((req, res, next) => {
+  if (req.path.endsWith('/whatsapp/webhook')) return next();
+  return mongoSanitize()(req, res, next);
+});
+
+// Meta sends hub.mode / hub.verify_token as dotted query keys — parse from raw URL.
+app.use((req, res, next) => {
+  if (!req.path.endsWith('/whatsapp/webhook') || !req.originalUrl.includes('?')) {
+    return next();
+  }
+  const params = new URL(req.originalUrl, 'http://localhost').searchParams;
+  req.metaWebhookQuery = {
+    mode: params.get('hub.mode'),
+    token: params.get('hub.verify_token'),
+    challenge: params.get('hub.challenge'),
+  };
+  next();
+});
 
 // Apply global rate limiting to API endpoints
 app.use('/api/', globalRateLimiter);

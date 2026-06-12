@@ -5,6 +5,8 @@ const logger = require('../utils/logger');
 
 const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
 
+const META_API_VERSION = process.env.META_API_VERSION || 'v25.0';
+
 let lastWebhookAt = null;
 let lastWebhookSummary = null;
 
@@ -12,32 +14,46 @@ const resolveBotPhoneNumber = async () => {
   const fromEnv = normalizePhone(
     process.env.META_WHATSAPP_NUMBER || process.env.WHATSAPP_BOT_NUMBER,
   );
-  if (fromEnv) return fromEnv;
+  if (fromEnv) return { phoneNumber: fromEnv, lookupError: null };
 
-  if (!process.env.META_PHONE_ID || !process.env.META_TOKEN) return null;
+  if (!process.env.META_PHONE_ID || !process.env.META_TOKEN) {
+    return { phoneNumber: null, lookupError: null };
+  }
 
   try {
     const response = await axios.get(
-      `https://graph.facebook.com/v18.0/${process.env.META_PHONE_ID}`,
+      `https://graph.facebook.com/${META_API_VERSION}/${process.env.META_PHONE_ID}`,
       {
         params: { fields: 'display_phone_number' },
         headers: { Authorization: `Bearer ${process.env.META_TOKEN}` },
       },
     );
-    return normalizePhone(response.data?.display_phone_number);
-  } catch {
-    return null;
+    return {
+      phoneNumber: normalizePhone(response.data?.display_phone_number),
+      lookupError: null,
+    };
+  } catch (error) {
+    const metaError = error.response?.data?.error;
+    let lookupError = 'Could not resolve bot number from Meta API.';
+    if (metaError?.code === 190) {
+      lookupError = 'Meta access token expired or invalid. In Meta Developer Console → WhatsApp → API Setup, click "Generate access token" and paste the new value into META_TOKEN in .env, then restart the backend.';
+    } else if (metaError?.message) {
+      lookupError = `Meta API error: ${metaError.message}`;
+    } else {
+      lookupError += ' Add META_WHATSAPP_NUMBER to .env or check META_TOKEN permissions.';
+    }
+    return { phoneNumber: null, lookupError };
   }
 };
 
 exports.getStatus = async (req, res, next) => {
   try {
     const metaConfigured = Boolean(process.env.META_PHONE_ID && process.env.META_TOKEN);
-    const phoneNumber = await resolveBotPhoneNumber();
+    const { phoneNumber, lookupError } = await resolveBotPhoneNumber();
 
-    let phoneLookupError = null;
-    if (metaConfigured && !phoneNumber && !process.env.META_WHATSAPP_NUMBER) {
-      phoneLookupError = 'Could not resolve bot number from Meta API. Add META_WHATSAPP_NUMBER to .env or check META_TOKEN permissions.';
+    let phoneLookupError = lookupError;
+    if (metaConfigured && !phoneNumber && !lookupError && !process.env.META_WHATSAPP_NUMBER) {
+      phoneLookupError = 'Could not resolve bot number from Meta API. Add META_WHATSAPP_NUMBER to .env.';
     }
 
     const authorizedSupervisors = await Camp.find({
@@ -78,9 +94,9 @@ exports.getStatus = async (req, res, next) => {
 };
 
 exports.verifyWebhook = (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+  const mode = req.metaWebhookQuery?.mode || req.query['hub.mode'] || req.query.hub?.mode;
+  const token = req.metaWebhookQuery?.token || req.query['hub.verify_token'] || req.query.hub?.verify_token;
+  const challenge = req.metaWebhookQuery?.challenge || req.query['hub.challenge'] || req.query.hub?.challenge;
 
   if (mode && token) {
     if (mode === 'subscribe' && token === (process.env.META_VERIFY_TOKEN || process.env.WEBHOOK_VERIFY_TOKEN)) {
