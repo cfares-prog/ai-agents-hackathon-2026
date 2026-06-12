@@ -1,12 +1,29 @@
 const mongoose = require('mongoose');
 
-const CampSchema = new mongoose.Schema({
-  campId: { type: String, required: true, unique: true },
-  name: { type: String, required: true },
-  location: { type: String, required: true },
-  supervisorName: { type: String, required: true },
-  supervisorWhatsappNumber: { type: String, required: true, unique: true },
-  deletedAt: { type: Date, default: null }
+const campSchema = new mongoose.Schema({
+    name: { 
+        type: String, 
+        required: true 
+    },
+    supervisorName: { 
+        type: String, 
+        default: 'Public User' 
+    },
+    supervisorWhatsappNumber: { 
+        type: String 
+    },
+    region: { 
+        type: String, 
+        default: 'Unassigned Public Submission' 
+    },
+    capacity: { 
+        type: Number, 
+        default: 0 
+    },
+    deletedAt: { 
+        type: Date, 
+        default: null 
+    }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Camp', CampSchema);
+module.exports = mongoose.model('Camp', campSchema);
