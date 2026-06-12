@@ -7,7 +7,10 @@
 const evaluateFallbackUrgency = (issueDescription, needsList) => {
   const normalizedText = `${issueDescription} ${needsList.join(' ')}`.toLowerCase();
   
-  const highUrgencyKeywords = ["bleeding", "choking", "no water", "dehydration", "fever", "child", "infant", "insulin", "doctor", "hospital"];
+  const highUrgencyKeywords = [
+    'bleeding', 'choking', 'no water', 'dehydration', 'fever', 'child', 'infant', 'insulin', 'doctor', 'hospital',
+    'ما في مي', 'بدون مياه', 'طفل', 'رضيع', 'حمى', 'نزيف', 'مستشفى', 'دواء', 'عاجل', 'طوارئ',
+  ];
   
   const containsCriticalKeywords = highUrgencyKeywords.some(keyword => normalizedText.includes(keyword));
   

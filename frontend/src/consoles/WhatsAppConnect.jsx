@@ -75,14 +75,21 @@ export default function WhatsAppConnect({ setup, active = true }) {
           <div>
             <h3>Bot not configured yet</h3>
             <p>
-              Set <code>META_PHONE_ID</code>, <code>META_TOKEN</code>, and{' '}
-              <code>META_WHATSAPP_NUMBER</code> in the backend <code>.env</code>, then restart
-              the server. Meta Cloud API handles the bot — no device pairing QR is needed.
+              Set <code>META_PHONE_ID</code> and <code>META_TOKEN</code> in the backend{' '}
+              <code>.env</code>, then <strong>restart the backend</strong> so it picks up the
+              values. <code>META_WHATSAPP_NUMBER</code> is optional — the bot number is fetched
+              from Meta automatically when credentials are valid.
             </p>
-            {status?.configured && !botNumber && (
+            {status?.configured && !status?.connected && (
               <p className={styles.colHint}>
-                Meta credentials are present but the bot phone number could not be resolved.
-                Add <code>META_WHATSAPP_NUMBER</code> (digits only, e.g. 961XXXXXXXX).
+                Credentials are loaded but the bot number could not be resolved.
+                {status.phoneLookupError ? ` ${status.phoneLookupError}` : ' Restart the backend if you just updated .env.'}
+              </p>
+            )}
+            {!status?.configured && (
+              <p className={styles.colHint}>
+                The running server does not see Meta credentials yet — save <code>.env</code> and
+                restart <code>npm start</code> in the backend folder.
               </p>
             )}
           </div>
@@ -94,6 +101,23 @@ export default function WhatsAppConnect({ setup, active = true }) {
               <span className={styles.dotOk} style={{ display: 'inline-block', marginRight: 8 }} />
               Dispatch bot is live
             </h3>
+            {!status?.lastWebhookAt && (
+              <div className={styles.error} style={{ marginBottom: 12 }}>
+                Meta has not delivered any webhook to this server yet. If you are running locally,
+                expose port 5000 with ngrok and set the callback URL in Meta Developer Console to{' '}
+                <code>https://YOUR-NGROK-URL/api/whatsapp/webhook</code> (verify token ={' '}
+                <code>WEBHOOK_VERIFY_TOKEN</code> in .env). Also add your supervisor phone as a
+                Meta test recipient.
+              </div>
+            )}
+            {status?.lastWebhookAt && (
+              <div className={styles.success} style={{ marginBottom: 12 }}>
+                Last webhook received: {new Date(status.lastWebhookAt).toLocaleString()}
+                {status.lastWebhookSummary?.from
+                  ? ` · from +${status.lastWebhookSummary.from}`
+                  : ''}
+              </div>
+            )}
             <p className={styles.colHint} style={{ marginBottom: 12 }}>
               Scan this QR to open WhatsApp and chat with the AI agent. Only supervisors
               whose numbers appear below can send reports.
@@ -140,19 +164,32 @@ export default function WhatsAppConnect({ setup, active = true }) {
         {authorizedCamps.length === 0 ? (
           <div className={styles.empty}>No supervisor WhatsApp numbers registered yet.</div>
         ) : (
-          <div className={styles.campQrGrid}>
-            {authorizedCamps.map((camp) => (
-              <div key={camp.id} className={styles.campQrCardStatic}>
-                <div>
-                  <strong>{camp.supervisorName}</strong>
-                  <br />
-                  <span>{camp.name}</span>
-                  <br />
-                  <span className={styles.reqId}>{formatPhone(camp.supervisorWhatsappNumber)}</span>
+          <>
+            <div className={styles.campQrGrid}>
+              {authorizedCamps.map((camp) => (
+                <div key={camp.id} className={styles.campQrCardStatic}>
+                  <div>
+                    <strong>{camp.supervisorName}</strong>
+                    <br />
+                    <span>{camp.name}</span>
+                    <br />
+                    <span className={styles.reqId}>{formatPhone(camp.supervisorWhatsappNumber)}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <h4>Example messages supervisors can send</h4>
+              <p className={styles.colHint}>
+                Short or vague text is OK — the AI introduces itself, asks follow-ups, and creates
+                the request. Arabic replies in Arabic.
+              </p>
+              <ul className={styles.colHint} style={{ lineHeight: 1.7 }}>
+                <li><strong>English:</strong> Hi · We need help · Water is out · 60 families, no food · Medical emergency</li>
+                <li><strong>Arabic:</strong> مرحبا · نحتاج مساعدة · ما في مي · عائلات جديدة بدون طعام · حالة طبية عاجلة</li>
+              </ul>
+            </div>
+          </>
         )}
       </div>
     </div>
