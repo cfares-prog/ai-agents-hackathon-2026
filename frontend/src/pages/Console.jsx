@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import styles from './Console.module.css'
 import { getSetupInfo } from '../api/client.js'
 import SupervisorConsole from '../consoles/SupervisorConsole.jsx'
@@ -16,27 +16,41 @@ const TABS = [
 export default function Console() {
   const [tab, setTab] = useState('supervisor')
   const [setup, setSetup] = useState(null)
+  const [setupLoading, setSetupLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    let cancelled = false
-    const load = () =>
-      getSetupInfo()
-        .then((d) => { if (!cancelled) { setSetup(d); setError(null) } })
-        .catch((e) => { if (!cancelled) setError(e.message) })
-    load()
-    const t = setInterval(load, 15000)
-    return () => { cancelled = true; clearInterval(t) }
+  const loadSetup = useCallback(() => {
+    setSetupLoading(true)
+    return getSetupInfo()
+      .then((d) => { setSetup(d); setError(null) })
+      .catch((e) => setError(e.message))
+      .finally(() => setSetupLoading(false))
   }, [])
+
+  useEffect(() => {
+    loadSetup()
+  }, [loadSetup])
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <h1>Control Center</h1>
-        <p>
-          One interactive test suite for the full dispatch pipeline — submit, triage,
-          route, acknowledge, fulfill.
-        </p>
+        <div className={styles.headerRow}>
+          <div>
+            <h1>Control Center</h1>
+            <p>
+              One interactive test suite for the full dispatch pipeline — triage,
+              route, acknowledge, fulfill.
+            </p>
+          </div>
+          <button
+            type="button"
+            className={styles.refreshHeaderBtn}
+            onClick={loadSetup}
+            disabled={setupLoading}
+          >
+            {setupLoading ? 'Loading…' : '↻ Reload setup'}
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -61,10 +75,18 @@ export default function Console() {
       </div>
 
       <div className={styles.panel}>
-        {tab === 'supervisor' && <SupervisorConsole setup={setup} />}
-        {tab === 'whatsapp' && <WhatsAppConnect setup={setup} />}
-        {tab === 'ngo' && <NgoConsole setup={setup} />}
-        {tab === 'admin' && <AdminConsole setup={setup} />}
+        {tab === 'supervisor' && (
+          <SupervisorConsole setup={setup} active={tab === 'supervisor'} />
+        )}
+        {tab === 'whatsapp' && (
+          <WhatsAppConnect setup={setup} active={tab === 'whatsapp'} />
+        )}
+        {tab === 'ngo' && (
+          <NgoConsole setup={setup} active={tab === 'ngo'} />
+        )}
+        {tab === 'admin' && (
+          <AdminConsole setup={setup} active={tab === 'admin'} />
+        )}
       </div>
     </main>
   )

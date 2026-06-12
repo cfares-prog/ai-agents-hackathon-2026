@@ -33,11 +33,8 @@ export const getHealth = () => api('/health');
 export const getSetupInfo = () => api('/api/test/setup-info');
 export const getWhatsappStatus = () => api('/api/whatsapp/status');
 
-export const simulateWhatsApp = (fromNumber, messageText) =>
-  api('/api/test/whatsapp-simulate', { method: 'POST', body: { fromNumber, messageText } });
-
-export const submitReport = (campId, issueDescription, needsList) =>
-  api('/api/reports', { method: 'POST', apiKey: campId, body: { campId, issueDescription, needsList } });
+export const getSupervisorDashboard = (campId) =>
+  api(`/api/camps/${campId}/supervisor-dashboard`);
 
 export const getCampReports = (campId) =>
   api(`/api/reports/${campId}`, { apiKey: campId });

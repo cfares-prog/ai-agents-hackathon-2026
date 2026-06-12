@@ -12,6 +12,7 @@ const reportRoutes = require('./src/routes/reportRoutes');
 const ngoRoutes = require('./src/routes/ngoRoutes');
 const whatsappRoutes = require('./src/routes/whatsappRoutes');
 const testRoutes = require('./src/routes/testRoutes');
+const campRoutes = require('./src/routes/campRoutes');
 
 // Middleware imports
 const { globalRateLimiter } = require('./src/middleware/rateLimiter');
@@ -55,6 +56,7 @@ app.use('/api', reportRoutes);
 app.use('/api', ngoRoutes);
 app.use('/api', whatsappRoutes);
 app.use('/api', testRoutes);
+app.use('/api', campRoutes);
 
 // System Health Check Endpoint 
 app.get('/health', async (req, res) => {

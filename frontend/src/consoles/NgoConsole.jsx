@@ -5,7 +5,7 @@ import { StatusBadge, UrgencyMeter } from './StatusBits.jsx'
 
 const STATUSES = ['routed', 'acknowledged', 'fulfilled', 'pending']
 
-export default function NgoConsole({ setup }) {
+export default function NgoConsole({ setup, active = true }) {
   const ngos = setup?.ngos || []
   const [apiKey, setApiKey] = useState('')
   const [status, setStatus] = useState('routed')
@@ -17,7 +17,10 @@ export default function NgoConsole({ setup }) {
   const activeNgo = ngos.find((n) => n.apiKey === apiKey)
 
   const refresh = useCallback(() => {
-    if (!apiKey) return
+    if (!apiKey) {
+      setRequests([])
+      return
+    }
     setLoading(true)
     getNgoRequests(apiKey, status)
       .then((d) => { setRequests(d.requests || []); setError(null) })
@@ -26,11 +29,9 @@ export default function NgoConsole({ setup }) {
   }, [apiKey, status])
 
   useEffect(() => {
+    if (!active) return
     refresh()
-    if (!apiKey) return
-    const t = setInterval(refresh, 6000)
-    return () => clearInterval(t)
-  }, [refresh, apiKey])
+  }, [active, refresh])
 
   const act = async (fn, requestId) => {
     setBusyId(requestId)
@@ -50,7 +51,8 @@ export default function NgoConsole({ setup }) {
         <div>
           <h3 className={styles.colTitle}>NGO Authentication</h3>
           <p className={styles.colHint}>
-            Enter your organization's API key, or pick a seeded NGO below.
+            Enter your organization&apos;s API key, or pick a seeded NGO below.
+            Queue loads when you open this tab or change filters.
           </p>
 
           <div className={styles.field}>
@@ -59,7 +61,7 @@ export default function NgoConsole({ setup }) {
               className={styles.input}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value.trim())}
-              placeholder="e.g. ngo_lrc_key"
+              placeholder="e.g. ngo_rwb_demo_key"
             />
           </div>
 
@@ -81,11 +83,21 @@ export default function NgoConsole({ setup }) {
         </div>
 
         <div>
-          <h3 className={styles.colTitle}>
-            Task Queue {loading && <small style={{ color: 'var(--text-dim)' }}>· refreshing…</small>}
-          </h3>
+          <div className={styles.tableToolbar}>
+            <h3 className={styles.colTitle} style={{ margin: 0 }}>
+              Task Queue {loading && <small style={{ color: 'var(--text-dim)' }}>· loading…</small>}
+            </h3>
+            <button
+              type="button"
+              className={styles.smallBtn}
+              onClick={refresh}
+              disabled={!apiKey || loading}
+            >
+              ↻ Refresh
+            </button>
+          </div>
           <p className={styles.colHint}>
-            Sorted by urgency, auto-refreshes every 6s. Acknowledge new tasks, then mark them fulfilled.
+            Sorted by urgency. Switch status tabs or refresh to load the latest tasks.
           </p>
 
           <div className={styles.statusTabs}>
@@ -102,10 +114,11 @@ export default function NgoConsole({ setup }) {
 
           {!apiKey ? (
             <div className={styles.empty}>Enter an NGO API key to load the dispatch queue.</div>
+          ) : loading && requests.length === 0 ? (
+            <div className={styles.empty}>Loading queue…</div>
           ) : requests.length === 0 ? (
             <div className={styles.empty}>
-              No "{status}" requests right now. Submit one from the Supervisor portal
-              or the WhatsApp simulator.
+              No &quot;{status}&quot; requests right now. Check another status tab or refresh.
             </div>
           ) : (
             <div className={styles.cardList}>

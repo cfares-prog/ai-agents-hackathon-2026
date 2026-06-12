@@ -57,13 +57,22 @@ exports.getCampReportsLog = async (req, res, next) => {
     const targetDateThreshold = new Date();
     targetDateThreshold.setDate(targetDateThreshold.getDate() - 30);
 
-    //30-day lookback limits
     const requests = await Request.find({
       campId: targetCamp._id,
       createdAt: { $gte: targetDateThreshold }
     }).sort({ createdAt: -1 }).lean();
 
-    return res.status(200).json({ success: true, requests });
+    return res.status(200).json({
+      success: true,
+      camp: {
+        id: targetCamp.campId,
+        name: targetCamp.name,
+        region: targetCamp.region,
+        supervisorName: targetCamp.supervisorName,
+        supervisorWhatsappNumber: targetCamp.supervisorWhatsappNumber,
+      },
+      requests,
+    });
   } catch (error) {
     next(error);
   }

@@ -3,6 +3,10 @@ const Camp = require('../models/Camp');
 const Request = require('../models/Request');
 const { computeUrgencyRating } = require('./aiUrgencyService');
 const { allocateRequestToNgo } = require('./resourceAllocatorService');
+const {
+  handleConversationTurn,
+  clearSession,
+} = require('./whatsappConversationService');
 const logger = require('../utils/logger');
 
 const activeSessions = new Map();
@@ -169,6 +173,16 @@ const handleIncomingWebhookPayload = async (body) => {
     } catch (err) {
         logger.error('Webhook processing error:', err);
     }
+
+    logger.warn(`🚫 Rejected WhatsApp message from unauthorized number: ${fromNumber}`);
+    const lang = /[\u0600-\u06FF]/.test(incomingText) ? 'ar' : 'en';
+    const msg = lang === 'ar'
+      ? '🚫 *رقم غير مصرح.*\n\nهذا البوت يقبل رسائل مشرفي المخيمات المسجّلين فقط.'
+      : '🚫 *Unauthorized number.*\n\nThis bot only accepts messages from registered camp supervisors.';
+    await sendMetaMessage(fromNumber, msg);
+  } catch (err) {
+    logger.error('CRITICAL: Error inside incoming webhook processing routine:', err);
+  }
 };
 const verifyWebhook = (req, res) => {
     const mode = req.query['hub.mode'];

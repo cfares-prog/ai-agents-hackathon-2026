@@ -2,7 +2,9 @@ const { OpenAI } = require('openai');
 const { evaluateFallbackUrgency } = require('../utils/keywordsFallback');
 const logger = require('../utils/logger');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'mock_key' });
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || process.env.OPEN_AI_KEY || 'mock_key',
+});
 
 const triageCache = new Map();
 
