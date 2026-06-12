@@ -1,28 +1,48 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const pino = require('pino');
+const axios = require('axios');
 const Camp = require('../models/Camp');
 const Request = require('../models/Request');
 const { computeUrgencyRating } = require('./aiUrgencyService');
 const { allocateRequestToNgo } = require('./resourceAllocatorService');
 const logger = require('../utils/logger');
 
-let sockInstance = null;
-let currentQR = null;
-let sessionLoggedOut = false;
+// Conversational Session Cache to track public users (Key: fromNumber, Value: { step, initialText })
+const activeSessions = new Map();
 
-const processInboundMessage = async (fromNumber, incomingText) => {
-    const linkedCamp = await Camp.findOne({ supervisorWhatsappNumber: fromNumber, deletedAt: null });
-    if (!linkedCamp) {
-        logger.warn(`Rejected text submission. Sender number ${fromNumber} does not match any registered supervisor profiles.`);
-        return { accepted: false, reason: 'unknown_sender' };
+/**
+ * Utility to fire outgoing WhatsApp messages via Meta Graph API
+ */
+const sendMetaMessage = async (toNumber, textContent) => {
+    try {
+        await axios({
+            method: 'POST',
+            url: `https://graph.facebook.com/v18.0/${process.env.META_PHONE_ID}/messages`,
+            headers: {
+                Authorization: `Bearer ${process.env.META_TOKEN}`,
+                'Content-Type': 'application/json',
+            },
+            data: {
+                messaging_product: 'whatsapp',
+                to: toNumber,
+                type: 'text',
+                text: { body: textContent },
+            },
+        });
+        logger.info(`✉️ Meta API successfully dispatched message to: ${toNumber}`);
+    } catch (error) {
+        logger.error('❌ Meta API message delivery failed:', error.response ? error.response.data : error.message);
     }
+};
 
+/**
+ * Helper to dynamically extract structural needs lists from conversational text
+ */
+const extractNeedsList = (text) => {
     const analyticalNeedsList = [];
-    if (incomingText.toLowerCase().includes('urgent')) {
-        analyticalNeedsList.push('urgent_flag');
-    }
-
-    const words = incomingText.toLowerCase().split(' ');
+    const normalized = text.toLowerCase();
+    
+    if (normalized.includes('urgent')) analyticalNeedsList.push('urgent_flag');
+    
+    const words = normalized.split(/\s+/);
     if (words.includes('water')) analyticalNeedsList.push('water');
     if (words.includes('food')) analyticalNeedsList.push('food');
     if (words.includes('medicine') || words.includes('medical')) analyticalNeedsList.push('medical');
@@ -31,7 +51,29 @@ const processInboundMessage = async (fromNumber, incomingText) => {
     if (analyticalNeedsList.length === 0) {
         analyticalNeedsList.push('general_relief');
     }
+    return analyticalNeedsList;
+};
 
+/**
+ * Handles the core business logic, database mutations, and NGO allocations
+ */
+const processInboundMessage = async (fromNumber, incomingText, campOverride = null) => {
+    let linkedCamp = campOverride;
+
+    // If no dynamic camp layout override is provided, fallback to standard supervisor checking
+    if (!linkedCamp) {
+        linkedCamp = await Camp.findOne({ supervisorWhatsappNumber: fromNumber, deletedAt: null });
+    }
+
+    // Extreme fallback: If no camp matches, find or fallback to a general queue object
+    if (!linkedCamp) {
+        linkedCamp = await Camp.findOne({ name: "Public Submissions" });
+        if (!linkedCamp) {
+            linkedCamp = { _id: "65cb12345678901234567890", name: "Unassigned Regional Queue" };
+        }
+    }
+
+    const analyticalNeedsList = extractNeedsList(incomingText);
     const evaluation = await computeUrgencyRating(incomingText, analyticalNeedsList);
 
     const waRequest = new Request({
@@ -48,11 +90,9 @@ const processInboundMessage = async (fromNumber, incomingText) => {
     await waRequest.save();
     await allocateRequestToNgo(waRequest);
 
-    if (sockInstance?.ws?.isOpen) {
-        await sockInstance.sendMessage(`${fromNumber}@s.whatsapp.net`, {
-            text: `✅ Request received and triaged successfully! Reference Ticket: ${waRequest.requestId}\nPriority Level: ${evaluation.urgencyScore}/10.`
-        });
-    }
+    // Fire confirmation message seamlessly using the Meta REST channel
+    const confirmationText = `✅ *Request logged into Central Dispatch!*\n\n• *Ticket:* ${waRequest.requestId}\n• *Location:* ${linkedCamp.name}\n• *AI Urgency Rating:* ${evaluation.urgencyScore}/10\n\n_Nearby regional NGOs have been automatically alerted._`;
+    await sendMetaMessage(fromNumber, confirmationText);
 
     return {
         accepted: true,
@@ -62,92 +102,83 @@ const processInboundMessage = async (fromNumber, incomingText) => {
     };
 };
 
-const startWhatsAppDaemon = async () => {
-    const { state, saveCreds } = await useMultiFileAuthState('logs/whatsapp_auth_session');
+/**
+ * Entrypoint parser for incoming webhook data. Replaces Baileys 'messages.upsert' loop.
+ * Call this directly from your WhatsApp controller when handling incoming POST requests.
+ */
+const handleIncomingWebhookPayload = async (body) => {
+    try {
+        if (body.object !== 'whatsapp_business_account') return;
 
-    sockInstance = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' })
-    });
+        const entry = body.entry?.[0];
+        const changes = entry?.changes?.[0];
+        const message = changes?.value?.messages?.[0];
 
-    sockInstance.ev.on('creds.update', saveCreds);
+        // Safe evaluation criteria: only handle text messages sent by the user
+        if (!message || message.type !== 'text') return;
 
-    sockInstance.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
+        const fromNumber = message.from; 
+        const incomingText = message.text?.body;
 
-        if (qr) {
-            logger.info('👉 QR Code generated! Open the Control Center → WhatsApp Link tab, or visit http://localhost:5000/qr');
-            currentQR = qr;
-            sessionLoggedOut = false;
+        if (!incomingText) return;
+
+        logger.info(`📬 Webhook Processing Engine: "${incomingText}" from: ${fromNumber}`);
+
+        // State Machine execution step logic for conversation chains
+        if (activeSessions.has(fromNumber)) {
+            const session = activeSessions.get(fromNumber);
+
+            if (session.step === 'AWAITING_LOCATION') {
+                logger.info(`📍 Location details received from ${fromNumber}: "${incomingText}"`);
+
+                let linkedCamp = await Camp.findOne({ 
+                    name: { $regex: new RegExp(incomingText.trim(), 'i') },
+                    deletedAt: null 
+                });
+
+                if (!linkedCamp) {
+                    linkedCamp = new Camp({
+                        name: incomingText.trim(),
+                        supervisorName: `Public User (${fromNumber})`,
+                        supervisorWhatsappNumber: fromNumber
+                    });
+                    await linkedCamp.save();
+                }
+
+                // Fire original diagnostic logic against newly generated camp target profile context
+                await processInboundMessage(fromNumber, session.initialText, linkedCamp);
+                
+                // Expunge active context trace to free execution memory
+                activeSessions.delete(fromNumber);
+            }
+            return;
         }
 
-        if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            if (statusCode === DisconnectReason.loggedOut) {
-                sessionLoggedOut = true;
-                currentQR = null;
-            }
-            if (shouldReconnect) {
-                setTimeout(() => startWhatsAppDaemon(), 5000);
-            } else {
-                currentQR = null;
-            }
-        } else if (connection === 'open') {
-            logger.info('🚀 WhatsApp Agent Daemon officially linked!');
-            currentQR = null;
-            sessionLoggedOut = false;
+        // Supervisor security routing lookup profile trace
+        const registeredSupervisor = await Camp.findOne({ supervisorWhatsappNumber: fromNumber, deletedAt: null });
+        
+        if (registeredSupervisor) {
+            logger.info(`⚡ Trusted supervisor profile verified (${fromNumber}). Executing direct pipeline...`);
+            await processInboundMessage(fromNumber, incomingText, registeredSupervisor);
+        } else {
+            logger.info(`✨ Unregistered public user session spun up for tracking context: ${fromNumber}`);
+            
+            activeSessions.set(fromNumber, {
+                step: 'AWAITING_LOCATION',
+                initialText: incomingText
+            });
+
+            const welcomePromptText = `🤖 *Hello! I am the NGO Crisis Relief Assistant.*\n\nI have securely captured your distress alert. To dispatch immediate aid packages accurately, please reply directly to this message with your *Current Camp Name* or *City/Location* details.`;
+            await sendMetaMessage(fromNumber, welcomePromptText);
         }
-    });
 
-    sockInstance.ev.on('messages.upsert', async (m) => {
-        try {
-            const msg = m.messages[0];
-            if (!msg.message) return;
-
-            const fromNumber = msg.key.remoteJid.split('@')[0];
-
-            //Looks inside regular chats AND self-sent device wrapper layers
-            //(temp for testing purposes)
-            const incomingText = msg.message.conversation || 
-                msg.message.extendedTextMessage?.text || 
-                msg.message.deviceSentMessage?.message?.conversation || 
-                msg.message.deviceSentMessage?.message?.extendedTextMessage?.text;
-
-            // Temporary diagnostic print to see exactly what bypasses the filter
-            console.log(`📬 Extracted Text: "${incomingText}" from JID number: ${fromNumber}`);
-
-            if (!incomingText) {
-                console.log("⚠️ Packet dropped: Message structure did not contain recognizable plain text keys.", JSON.stringify(msg.message));
-                return;
-            }
-
-            if (!incomingText) return;
-
-            logger.info(`Inbound WhatsApp message packet caught. Origin profile number: ${fromNumber}`);
-
-            await processInboundMessage(fromNumber, incomingText);
-        } catch (err) {
-            logger.error('Error handling live inbound WhatsApp message packet processing:', err);
-        }
-    });
+    } catch (err) {
+        logger.error('CRITICAL: Error inside incoming webhook processing routine:', err);
+    }
 };
 
-const getLinkedPhoneNumber = () => {
-    const jid = sockInstance?.user?.id;
-    if (!jid) return null;
-    return jid.split(':')[0].split('@')[0];
+module.exports = { 
+    handleIncomingWebhookPayload,
+    processInboundMessage,
+    sendMetaMessage
 };
-
-const getStatus = () => {
-    return {
-        connected: sockInstance?.ws?.isOpen || false,
-        loggedOut: sessionLoggedOut,
-        phoneNumber: getLinkedPhoneNumber(),
-    };
-};
-
-const getLatestQR = () => currentQR;
-
-module.exports = { startWhatsAppDaemon, getStatus, getLatestQR, processInboundMessage };
