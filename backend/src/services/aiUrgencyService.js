@@ -4,7 +4,6 @@ const logger = require('../utils/logger');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'mock_key' });
 
-// Simple localized execution memory cache to fulfill RULE 6
 const triageCache = new Map();
 
 const computeUrgencyRating = async (issueDescription, needsList) => {

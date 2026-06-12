@@ -3,7 +3,6 @@ const router = express.Router();
 const whatsappAgent = require('../services/whatsappAgentService');
 
 router.post('/webhook/whatsapp', async (req, res) => {
-  // Returns instantly to fulfill operational async expectations
   res.status(200).json({ success: true });
 });
 

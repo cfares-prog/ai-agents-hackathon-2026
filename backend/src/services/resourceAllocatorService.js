@@ -7,14 +7,14 @@ const logger = require('../utils/logger');
  */
 const allocateRequestToNgo = async (requestDocument) => {
   try {
-    // 1. Fetch available active NGO resources
+    // Fetch available active NGO resources
     const activeNgos = await NGO.find({ isActive: true });
     if (!activeNgos || activeNgos.length === 0) {
       logger.warn('No registered active NGOs available to parse task queues.');
       return null;
     }
 
-    // 2. Evaluate match profiles against request requirements
+    // Evaluate match profiles against request requirements
     let matchingNgos = activeNgos.filter(ngo => 
       ngo.resourceSpecialties.some(specialty => requestDocument.needsList.includes(specialty))
     );
@@ -22,7 +22,7 @@ const allocateRequestToNgo = async (requestDocument) => {
     let assignedNgoTarget = null;
 
     if (matchingNgos.length > 0) {
-      // 3. Round-Robin select based on oldest assignment history
+      // Round-Robin select based on oldest assignment history
       matchingNgos.sort((a, b) => {
         if (!a.lastAssignedAt) return -1;
         if (!b.lastAssignedAt) return 1;
@@ -30,14 +30,14 @@ const allocateRequestToNgo = async (requestDocument) => {
       });
       assignedNgoTarget = matchingNgos[0];
     } else {
-      // 4. Fallback search path to catch general-purpose NGOs
+      // Fallback search path to catch general-purpose NGOs
       const generalPurposeNgo = activeNgos.find(ngo => ngo.resourceSpecialties.includes('general'));
       if (generalPurposeNgo) {
         assignedNgoTarget = generalPurposeNgo;
       }
     }
 
-    // 5. Update assignment mappings if a target NGO was identified
+    // Update assignment mappings if a target NGO was identified
     if (assignedNgoTarget) {
       requestDocument.assignedNgo = assignedNgoTarget.ngoName;
       requestDocument.status = 'routed';

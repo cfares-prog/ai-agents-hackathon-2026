@@ -1,17 +1,10 @@
 const mongoose = require('mongoose');
-const logger = require('../utils/logger');
 
-const connectDB = async () => {
-  try {
-    const options = JSON.parse(process.env.MONGODB_OPTIONS || '{}');
-    mongoose.set('strictQuery', true);
-    
-    await mongoose.connect(process.env.MONGODB_URI, options);
-    logger.info('Successfully established connection with MongoDB Cluster.');
-  } catch (err) {
-    logger.error('Critical database initialization failure:', err);
-    process.exit(1);
-  }
-};
+const CampSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  supervisorName: { type: String, required: true },
+  supervisorWhatsappNumber: { type: String, required: true, unique: true },
+  deletedAt: { type: Date, default: null }
+}, { timestamps: true });
 
-module.exports = connectDB;
+module.exports = mongoose.model('Camp', CampSchema);

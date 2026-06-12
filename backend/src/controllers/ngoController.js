@@ -17,7 +17,7 @@ exports.getPendingNgoRequests = async (req, res, next) => {
       urgencyScore: { $gte: minUrgency }
     };
 
-    // Execute using clean lean processing pipelines to maximize performance
+    // Execute using lean processing pipelines to maximize performance
     const records = await Request.find(matchQuery)
       .sort({ urgencyScore: -1, createdAt: -1 })
       .skip(skipIndex)

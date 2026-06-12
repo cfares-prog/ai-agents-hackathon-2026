@@ -8,21 +8,21 @@ const authenticateApiKey = async (req, res, next) => {
   }
 
   try {
-    // 1. Check administrative keys
+    //Check administrative keys
     if (apiKey === process.env.ADMIN_API_KEY) {
       req.isAdmin = true;
       return next();
     }
 
-    // 2. Check registered NGO profiles
+    //Check registered NGO profiles
     const ngoProfile = await NGO.findOne({ apiKey, isActive: true }).lean();
     if (ngoProfile) {
       req.ngo = ngoProfile;
       return next();
     }
 
-    // 3. Check supervisor registration mappings
-    // For simplicity in this demo, camp supervisors register their api keys within their Camp metadata profiles.
+    //Check supervisor registration mappings
+    //For simplicity in this demo, camp supervisors register their api keys within their Camp metadata profiles.
     const campProfile = await Camp.findOne({ campId: apiKey, deletedAt: null }).lean();
     if (campProfile) {
       req.supervisorCamp = campProfile;

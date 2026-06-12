@@ -6,7 +6,7 @@ const connectDB = async () => {
     const options = JSON.parse(process.env.MONGODB_OPTIONS || '{}');
     mongoose.set('strictQuery', true);
     
-    // Fall back to local default URI string if environment parsing skips a beat
+    //Fall back to local default URI string if environment parsing fails
     const dbUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/lebanon_camps';
     
     await mongoose.connect(dbUri, options);

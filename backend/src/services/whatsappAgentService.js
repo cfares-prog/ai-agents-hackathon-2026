@@ -1,6 +1,5 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-//const pino = require('pino');
-const qrcode = require('qrcode-terminal');
+const pino = require('pino');
 const Camp = require('../models/Camp');
 const Request = require('../models/Request');
 const { computeUrgencyRating } = require('./aiUrgencyService');
@@ -8,11 +7,9 @@ const { allocateRequestToNgo } = require('./resourceAllocatorService');
 const logger = require('../utils/logger');
 
 let sockInstance = null;
+let currentQR = null;
 
 const startWhatsAppDaemon = async () => {
-    logger.info('Initializing autonomous Baileys WhatsApp network listener thread context...');
-
-    // Use simple storage authentication bindings for multi-file tracking states
     const { state, saveCreds } = await useMultiFileAuthState('logs/whatsapp_auth_session');
 
     sockInstance = makeWASocket({
@@ -23,35 +20,48 @@ const startWhatsAppDaemon = async () => {
 
     sockInstance.ev.on('creds.update', saveCreds);
 
-sockInstance.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    
-    logger.info(`📡 Stream Update Intercepted: ${JSON.stringify(update)}`);
-    
-    if (qr) {
-      logger.info('👉 Generating explicit QR code via qrcode-terminal...');
-      qrcode.generate(qr, { small: true });
-    }
-    
-    if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      logger.warn(`WhatsApp connection severed. Status Code: ${statusCode || 'Unknown'}`);
-      
-      // Automatic reconnection attempt
-      setTimeout(() => startWhatsAppDaemon(), parseInt(process.env.WHATSAPP_RECONNECT_INTERVAL_MS || '5000', 10));
-    } else if (connection === 'open') {
-      logger.info('WhatsApp gateway link stabilized. Daemon active.');
-    }
-  });
+    sockInstance.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-    // Intercepting payload data packets coming down the live feed stream
+        if (qr) {
+            logger.info('👉 QR Code generated! Open http://localhost:5000/qr in your browser to scan it.');
+            currentQR = qr; //temp 
+        }
+
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                setTimeout(() => startWhatsAppDaemon(), 5000);
+            } else {
+                currentQR = null; // Clear QR on logout
+            }
+        } else if (connection === 'open') {
+            logger.info('🚀 WhatsApp Agent Daemon officially linked!');
+            currentQR = null; // Clear QR after successful connection
+        }
+    });
+
     sockInstance.ev.on('messages.upsert', async (m) => {
         try {
             const msg = m.messages[0];
-            if (!msg.message || msg.key.fromMe) return;
+            if (!msg.message) return;
 
             const fromNumber = msg.key.remoteJid.split('@')[0];
-            const incomingText = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+            //Looks inside regular chats AND self-sent device wrapper layers
+            //(temp for testing purposes)
+            const incomingText = msg.message.conversation || 
+                msg.message.extendedTextMessage?.text || 
+                msg.message.deviceSentMessage?.message?.conversation || 
+                msg.message.deviceSentMessage?.message?.extendedTextMessage?.text;
+
+            // Temporary diagnostic print to see exactly what bypasses the filter
+            console.log(`📬 Extracted Text: "${incomingText}" from JID number: ${fromNumber}`);
+
+            if (!incomingText) {
+                console.log("⚠️ Packet dropped: Message structure did not contain recognizable plain text keys.", JSON.stringify(msg.message));
+                return;
+            }
 
             if (!incomingText) return;
 
@@ -64,13 +74,13 @@ sockInstance.ev.on('connection.update', async (update) => {
                 return;
             }
 
-            // 1. Immediately normalize message into a standard needs list array
+            //Immediately normalize message into a standard needs list array
             const analyticalNeedsList = [];
             if (incomingText.toLowerCase().includes('urgent')) {
                 analyticalNeedsList.push('urgent_flag');
             }
 
-            // Basic split processing matching token parameters
+            //Basic split processing matching token parameters
             const words = incomingText.toLowerCase().split(' ');
             if (words.includes('water')) analyticalNeedsList.push('water');
             if (words.includes('food')) analyticalNeedsList.push('food');
@@ -81,10 +91,10 @@ sockInstance.ev.on('connection.update', async (update) => {
                 analyticalNeedsList.push('general_relief');
             }
 
-            // 2. Compute urgency score using the shared triage service layer
+            //Compute urgency score using the shared triage service layer
             const evaluation = await computeUrgencyRating(incomingText, analyticalNeedsList);
 
-            // 3. Save standard request schema trace tracking metrics safely
+            //Save standard request schema trace tracking metrics safely
             const waRequest = new Request({
                 campId: linkedCamp._id,
                 issueDescription: incomingText,
@@ -98,10 +108,10 @@ sockInstance.ev.on('connection.update', async (update) => {
 
             await waRequest.save();
 
-            // 4. Run allocator engine to instantly alert specialized regional NGO accounts
+            //Run allocator engine to instantly alert specialized regional NGO accounts
             await allocateRequestToNgo(waRequest);
 
-            // 5. Send automated transaction receipt tracking code notifications back via Baileys
+            //Send automated transaction receipt tracking code notifications back via Baileys
             await sockInstance.sendMessage(msg.key.remoteJid, { 
                 text: `✅ Request received and triaged successfully! Reference Ticket: ${waRequest.requestId}\nPriority Level: ${evaluation.urgencyScore}/10.` 
             });
@@ -118,4 +128,6 @@ const getStatus = () => {
     };
 };
 
-module.exports = { startWhatsAppDaemon, getStatus };
+const getLatestQR = () => currentQR;
+
+module.exports = { startWhatsAppDaemon, getStatus , getLatestQR};

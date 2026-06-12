@@ -14,10 +14,10 @@ exports.submitReportWebForm = async (req, res, next) => {
       return res.status(404).json({ success: false, error: "Referenced camp configuration profile not located." });
     }
 
-    // 1. Process triage scores asynchronously using our robust service layer
+    //Process triage scores asynchronously using our robust service layer
     const triageAnalysis = await computeUrgencyRating(issueDescription, needsList);
 
-    // 2. Instantly persist tracking records into the database cluster
+    //Instantly persist tracking records into the database cluster
     const freshRequest = new Request({
       campId: verifiedCamp._source || verifiedCamp._id,
       issueDescription,
@@ -31,7 +31,7 @@ exports.submitReportWebForm = async (req, res, next) => {
     await freshRequest.save();
     logger.info(`Request ${freshRequest.requestId} saved successfully. Spawning auto-allocation router.`);
 
-    // 3. Fire dynamic round-robin routing logic to map it to an NGO
+    //Fire dynamic round-robin routing logic to map it to an NGO
     await allocateRequestToNgo(freshRequest);
 
     return res.status(200).json({
@@ -57,7 +57,7 @@ exports.getCampReportsLog = async (req, res, next) => {
     const targetDateThreshold = new Date();
     targetDateThreshold.setDate(targetDateThreshold.getDate() - 30);
 
-    // Fulfills RULE 9 (lean usage) and specifies 30-day lookback limits
+    //30-day lookback limits
     const requests = await Request.find({
       campId: targetCamp._id,
       createdAt: { $gte: targetDateThreshold }
