@@ -1,7 +1,11 @@
 const mongoose = require('mongoose');
 
 const NGOSchema = new mongoose.Schema({
-  ngoId: { type: String, unique: true, default: () => `ngo_${Date.now()}` },
+  ngoId: {
+    type: String,
+    unique: true,
+    default: () => `ngo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+  },
   ngoName: { type: String, required: true, unique: true },
   contactEmail: { type: String, required: true, match: /.+\@.+\..+/ },
   contactPhone: { type: String, required: true },

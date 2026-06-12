@@ -1,0 +1,75 @@
+:root {
+  --bg: #070d0a;
+  --bg-soft: #0c1410;
+  --panel: #101a14;
+  --panel-2: #15221a;
+  --border: rgba(108, 196, 145, 0.14);
+  --border-strong: rgba(108, 196, 145, 0.3);
+  --text: #e9f3ec;
+  --text-dim: #93a89b;
+  --cedar: #2fbf71;
+  --cedar-deep: #157a47;
+  --cedar-red: #e84855;
+  --gold: #e8b944;
+  --grad-cedar: linear-gradient(135deg, #157a47 0%, #2fbf71 55%, #7be0a8 100%);
+  --grad-fire: linear-gradient(135deg, #e84855 0%, #ff8a5c 100%);
+  --radius: 14px;
+  --shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.65);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgba(47, 191, 113, 0.10), transparent 60%),
+    radial-gradient(900px 460px at -10% 25%, rgba(232, 72, 85, 0.07), transparent 55%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(47, 191, 113, 0.35);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(108, 196, 145, 0.22);
+  border-radius: 8px;
+}

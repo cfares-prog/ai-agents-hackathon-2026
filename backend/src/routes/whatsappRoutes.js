@@ -1,14 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const whatsappAgent = require('../services/whatsappAgentService');
+const whatsappController = require('../controllers/whatsappController');
 
-router.post('/webhook/whatsapp', async (req, res) => {
-  res.status(200).json({ success: true });
-});
-
-router.get('/whatsapp/status', (req, res) => {
-  const currentStatus = whatsappAgent.getStatus();
-  return res.status(200).json({ connected: currentStatus.connected, qrCode: currentStatus.connected ? null : "Check console for current active deployment QR." });
-});
+router.get('/whatsapp/status', whatsappController.getStatus);
+router.get('/whatsapp/webhook', whatsappController.verifyWebhook);
+router.post('/whatsapp/webhook', whatsappController.receiveMessage);
 
 module.exports = router;

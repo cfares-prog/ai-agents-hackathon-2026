@@ -1,133 +1,185 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const pino = require('pino');
+const axios = require('axios');
 const Camp = require('../models/Camp');
 const Request = require('../models/Request');
 const { computeUrgencyRating } = require('./aiUrgencyService');
 const { allocateRequestToNgo } = require('./resourceAllocatorService');
+const {
+  handleConversationTurn,
+  clearSession,
+} = require('./whatsappConversationService');
 const logger = require('../utils/logger');
 
-let sockInstance = null;
-let currentQR = null;
+const META_API_VERSION = process.env.META_API_VERSION || 'v25.0';
 
-const startWhatsAppDaemon = async () => {
-    const { state, saveCreds } = await useMultiFileAuthState('logs/whatsapp_auth_session');
+const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
 
-    sockInstance = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' })
-    });
+const findSupervisorCamp = async (fromNumber) => {
+  const normalized = normalizePhone(fromNumber);
+  if (!normalized) return null;
 
-    sockInstance.ev.on('creds.update', saveCreds);
-
-    sockInstance.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-            logger.info('👉 QR Code generated! Open http://localhost:5000/qr in your browser to scan it.');
-            currentQR = qr; //temp 
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
-                setTimeout(() => startWhatsAppDaemon(), 5000);
-            } else {
-                currentQR = null; // Clear QR on logout
-            }
-        } else if (connection === 'open') {
-            logger.info('🚀 WhatsApp Agent Daemon officially linked!');
-            currentQR = null; // Clear QR after successful connection
-        }
-    });
-
-    sockInstance.ev.on('messages.upsert', async (m) => {
-        try {
-            const msg = m.messages[0];
-            if (!msg.message) return;
-
-            const fromNumber = msg.key.remoteJid.split('@')[0];
-
-            //Looks inside regular chats AND self-sent device wrapper layers
-            //(temp for testing purposes)
-            const incomingText = msg.message.conversation || 
-                msg.message.extendedTextMessage?.text || 
-                msg.message.deviceSentMessage?.message?.conversation || 
-                msg.message.deviceSentMessage?.message?.extendedTextMessage?.text;
-
-            // Temporary diagnostic print to see exactly what bypasses the filter
-            console.log(`📬 Extracted Text: "${incomingText}" from JID number: ${fromNumber}`);
-
-            if (!incomingText) {
-                console.log("⚠️ Packet dropped: Message structure did not contain recognizable plain text keys.", JSON.stringify(msg.message));
-                return;
-            }
-
-            if (!incomingText) return;
-
-            logger.info(`Inbound WhatsApp message packet caught. Origin profile number: ${fromNumber}`);
-
-            // Locate corresponding supervisor database records to identify source camp
-            const linkedCamp = await Camp.findOne({ supervisorWhatsappNumber: fromNumber, deletedAt: null });
-            if (!linkedCamp) {
-                logger.warn(`Rejected text submission. Sender number ${fromNumber} does not match any registered supervisor profiles.`);
-                return;
-            }
-
-            //Immediately normalize message into a standard needs list array
-            const analyticalNeedsList = [];
-            if (incomingText.toLowerCase().includes('urgent')) {
-                analyticalNeedsList.push('urgent_flag');
-            }
-
-            //Basic split processing matching token parameters
-            const words = incomingText.toLowerCase().split(' ');
-            if (words.includes('water')) analyticalNeedsList.push('water');
-            if (words.includes('food')) analyticalNeedsList.push('food');
-            if (words.includes('medicine') || words.includes('medical')) analyticalNeedsList.push('medical');
-            if (words.includes('blanket') || words.includes('blankets')) analyticalNeedsList.push('shelter');
-
-            if (analyticalNeedsList.length === 0) {
-                analyticalNeedsList.push('general_relief');
-            }
-
-            //Compute urgency score using the shared triage service layer
-            const evaluation = await computeUrgencyRating(incomingText, analyticalNeedsList);
-
-            //Save standard request schema trace tracking metrics safely
-            const waRequest = new Request({
-                campId: linkedCamp._id,
-                issueDescription: incomingText,
-                needsList: analyticalNeedsList,
-                urgencyScore: evaluation.urgencyScore,
-                urgencyReason: evaluation.urgencyReason,
-                summary: evaluation.summary,
-                source: 'whatsapp',
-                rawWhatsappMessage: incomingText
-            });
-
-            await waRequest.save();
-
-            //Run allocator engine to instantly alert specialized regional NGO accounts
-            await allocateRequestToNgo(waRequest);
-
-            //Send automated transaction receipt tracking code notifications back via Baileys
-            await sockInstance.sendMessage(msg.key.remoteJid, { 
-                text: `✅ Request received and triaged successfully! Reference Ticket: ${waRequest.requestId}\nPriority Level: ${evaluation.urgencyScore}/10.` 
-            });
-
-        } catch (err) {
-            logger.error('Error handling live inbound WhatsApp message packet processing:', err);
-        }
-    });
+  return Camp.findOne({
+    supervisorWhatsappNumber: normalized,
+    deletedAt: null,
+  });
 };
 
-const getStatus = () => {
-    return {
-        connected: sockInstance?.ws?.isOpen || false
+const sendMetaMessage = async (toNumber, textContent) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `https://graph.facebook.com/${META_API_VERSION}/${process.env.META_PHONE_ID}/messages`,
+      headers: {
+        Authorization: `Bearer ${process.env.META_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      data: {
+        messaging_product: 'whatsapp',
+        to: normalizePhone(toNumber),
+        type: 'text',
+        text: { body: textContent },
+      },
+    });
+    logger.info(`✉️ Meta API successfully dispatched message to: ${toNumber}`);
+  } catch (error) {
+    logger.error(
+      '❌ Meta API message delivery failed:',
+      error.response?.status,
+      error.response?.data || error.message,
+    );
+  }
+};
+
+const buildConfirmation = (template, requestId, campName, urgencyScore, lang) => {
+  if (template) {
+    return template
+      .replace(/\{\{ticket\}\}/g, requestId)
+      .replace(/\{\{score\}\}/g, String(urgencyScore))
+      .replace(/\{\{camp\}\}/g, campName);
+  }
+  if (lang === 'ar') {
+    return (
+      `✅ *تم تسجيل الطلب في مركز الإغاثة!*\n\n` +
+      `• *التذكرة:* ${requestId}\n` +
+      `• *المخيم:* ${campName}\n` +
+      `• *الأولوية:* ${urgencyScore}/10\n\n` +
+      `_تم تنبيه المنظمات الإنسانية._`
+    );
+  }
+  return (
+    `✅ *Request logged into Central Dispatch!*\n\n` +
+    `• *Ticket:* ${requestId}\n` +
+    `• *Camp:* ${campName}\n` +
+    `• *Urgency:* ${urgencyScore}/10\n\n` +
+    `_Nearby NGOs have been automatically alerted._`
+  );
+};
+
+const createRequestFromConversation = async (fromNumber, linkedCamp, turn, rawMessages) => {
+  const needsList = turn.needsList || ['general_relief'];
+
+  let evaluation;
+  if (turn.urgencyScore && turn.summary && turn.urgencyReason) {
+    evaluation = {
+      urgencyScore: Math.min(Math.max(turn.urgencyScore, 1), 10),
+      urgencyReason: turn.urgencyReason,
+      summary: turn.summary.substring(0, 200),
     };
+  } else {
+    evaluation = await computeUrgencyRating(turn.issueDescriptionEnglish, needsList);
+  }
+
+  const waRequest = new Request({
+    campId: linkedCamp._id,
+    issueDescription: turn.issueDescriptionEnglish,
+    needsList,
+    urgencyScore: evaluation.urgencyScore,
+    urgencyReason: evaluation.urgencyReason,
+    summary: evaluation.summary,
+    source: 'whatsapp',
+    rawWhatsappMessage: rawMessages,
+  });
+
+  await waRequest.save();
+  await allocateRequestToNgo(waRequest);
+
+  const confirmationText = buildConfirmation(
+    turn.confirmationTemplate,
+    waRequest.requestId,
+    linkedCamp.name,
+    evaluation.urgencyScore,
+    turn.language,
+  );
+
+  await sendMetaMessage(fromNumber, confirmationText);
+  clearSession(fromNumber);
+
+  return {
+    accepted: true,
+    requestId: waRequest.requestId,
+    urgencyScore: evaluation.urgencyScore,
+    status: waRequest.status,
+  };
 };
 
-const getLatestQR = () => currentQR;
+const processInboundMessage = async (fromNumber, incomingText, campOverride = null) => {
+  const linkedCamp = campOverride || await findSupervisorCamp(fromNumber);
 
-module.exports = { startWhatsAppDaemon, getStatus , getLatestQR};
+  if (!linkedCamp) {
+    throw new Error(`Unauthorized WhatsApp number: ${normalizePhone(fromNumber)}`);
+  }
+
+  const turn = await handleConversationTurn(fromNumber, incomingText, linkedCamp);
+
+  if (turn.action === 'create_request') {
+    return createRequestFromConversation(fromNumber, linkedCamp, turn, incomingText);
+  }
+
+  await sendMetaMessage(fromNumber, turn.replyToUser);
+  return {
+    accepted: false,
+    conversational: true,
+    action: turn.action,
+    language: turn.language,
+  };
+};
+
+const handleIncomingWebhookPayload = async (body) => {
+  try {
+    if (body.object !== 'whatsapp_business_account') return;
+
+    const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (!message || message.type !== 'text') return;
+
+    const fromNumber = normalizePhone(message.from);
+    const incomingText = message.text?.body;
+
+    if (!incomingText) return;
+
+    logger.info(`📬 Webhook: "${incomingText.slice(0, 80)}" from ${fromNumber}`);
+
+    const registeredSupervisor = await findSupervisorCamp(fromNumber);
+
+    if (registeredSupervisor) {
+      await processInboundMessage(fromNumber, incomingText, registeredSupervisor);
+      return;
+    }
+
+    logger.warn(`🚫 Rejected WhatsApp message from unauthorized number: ${fromNumber}`);
+    const lang = /[\u0600-\u06FF]/.test(incomingText) ? 'ar' : 'en';
+    const msg = lang === 'ar'
+      ? '🚫 *رقم غير مصرح.*\n\nهذا البوت يقبل رسائل مشرفي المخيمات المسجّلين فقط.'
+      : '🚫 *Unauthorized number.*\n\nThis bot only accepts messages from registered camp supervisors.';
+    await sendMetaMessage(fromNumber, msg);
+  } catch (err) {
+    logger.error('CRITICAL: Error inside incoming webhook processing routine:', err);
+  }
+};
+
+module.exports = {
+  handleIncomingWebhookPayload,
+  processInboundMessage,
+  sendMetaMessage,
+  findSupervisorCamp,
+  normalizePhone,
+};
